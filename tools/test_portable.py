@@ -4,14 +4,17 @@ import json
 import os
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from app import __version__
 
 
 def main():
-    archive = ROOT / 'dist/portable/MijiaDeck-v1.0.0-windows-x64.zip'
+    archive = ROOT / f'dist/portable/MijiaDeck-v{__version__}-windows-x64.zip'
     # Windows may briefly retain a loaded per-user font after the process exits.
     with tempfile.TemporaryDirectory(prefix='MijiaDeck-check-', ignore_cleanup_errors=True) as temporary:
         folder = Path(temporary) / '便携版 验证'
@@ -37,6 +40,9 @@ def main():
                           'report': data}, ensure_ascii=False, indent=2))
         if process.returncode or not data['ok'] or not data['packaged']:
             raise SystemExit(1)
+        info = json.loads((folder / 'MijiaDeck/build-info.json').read_text(encoding='utf-8'))
+        if info['camera_backend_included'] and 'camera-relay-offline-check' not in data['checks']:
+            raise RuntimeError('Camera backend was bundled but not validated')
 
 
 if __name__ == '__main__':

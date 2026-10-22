@@ -25,4 +25,4 @@ Python's license is in `licenses/Python/`. QtAwesome's MIT notice and each font'
 
 ## Camera backend
 
-The micam-based relay JAR and Java runtime are **not included**. See `THIRD_PARTY_NOTICES.md` for the experimental camera backend's separate distribution status.
+The v1.0.1 full build includes the micam-based relay and a reduced OpenJDK runtime. The exact micam reference commit is 2cc9d9e7607014d1d05c17bc5676544fbb0d5d24: https://github.com/eugeneRover/micam/tree/2cc9d9e7607014d1d05c17bc5676544fbb0d5d24 . Upstream redistribution permission remains unconfirmed; see `THIRD_PARTY_NOTICES.md`. Java's `legal/` notices and version metadata remain under `_internal/tools/camera_relay/runtime/`; sources are available through https://github.com/adoptium/temurin21-binaries and https://github.com/openjdk/jdk21u . The legacy v1.0.0 package does not include this backend.

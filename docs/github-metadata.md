@@ -4,13 +4,13 @@
 
 简介 / About：
 
-> 米家 / 小米智能设备 Windows 桌面控制台：设备卡片、托盘控制、小爱文字指令、实验性摄像头远程预览。A Windows desktop dashboard for Xiaomi Mi Home (Mijia).
+> 开源免费的米家 / 小米 Windows 桌面客户端：摄像头远程查看与云台控制、托盘切换小爱音箱、播放控制与文字指令。A free Windows desktop client for Xiaomi Mi Home (Mijia). macOS planned.
 
 Topics：
 
 `mijia` `xiaomi` `mi-home` `windows` `smart-home` `home-automation` `desktop-app` `system-tray` `xiaoai` `pyside6` `qt6` `python`
 
-中文自然搜索词：米家电脑版、小米智能家居、Windows 米家客户端、米家设备管理、托盘快捷控制、小爱同学文字指令。
+中文自然搜索词：米家电脑版、小米智能家居、Windows 米家客户端、米家设备管理、摄像头远程查看、云台控制、托盘切换小爱音箱、小爱同学文字指令。
 
 English search phrases: Xiaomi Mi Home Windows client, Mijia desktop app, smart home dashboard, system tray quick controls, XiaoAI text commands.
 

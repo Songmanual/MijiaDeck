@@ -19,6 +19,7 @@ def main():
     if sys.platform != 'win32':
         raise SystemExit('Build on Windows x64 with Python 3.12 / PySide6 6.8.3.')
     import PyInstaller
+    with_camera = '--with-camera' in sys.argv
     output = ROOT / 'dist' / 'portable'
     output.mkdir(parents=True, exist_ok=True)
     version_file = ROOT / 'build/windows-version.txt'
@@ -50,6 +51,17 @@ def main():
     if '--repack' not in sys.argv:
         subprocess.run(args, cwd=ROOT, check=True)
     bundle = output / 'MijiaDeck'
+    camera_target = bundle / '_internal/tools/camera_relay'
+    if with_camera:
+        backend = ROOT / 'tools/camera_relay'
+        if not (backend / 'camera-relay.jar').is_file() or not (backend / 'runtime/bin/java.exe').is_file():
+            raise RuntimeError('Build the camera backend with tools/install_camera_backend.py first')
+        camera_target.mkdir(parents=True, exist_ok=True)
+        for name in ['camera-relay.jar', 'README.md', 'UPSTREAM-README.md']:
+            shutil.copy2(backend / name, camera_target / name)
+        shutil.copytree(backend / 'runtime', camera_target / 'runtime', dirs_exist_ok=True)
+    elif camera_target.exists():
+        raise RuntimeError('Existing camera files found; use a fresh build for a backend-free package')
     for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md']:
         shutil.copy2(ROOT / name, bundle / name)
     shutil.copytree(ROOT / 'docs/licenses', bundle / 'licenses/upstream', dirs_exist_ok=True)
@@ -64,7 +76,9 @@ def main():
         '支持 Windows 10 1809+ / Windows 11 x64；不支持 Win7 / Win8。\n'
         '使用米家 APP 扫码登录。\n'
         '配置保存在 %LOCALAPPDATA%\\MijiaDeck；登录凭据在用户目录 .config\\mijia-api。\n'
-        '本包未附带实验性摄像头传输组件，无法直接播放摄像头视频。\n'
+        + ('本包包含实验性摄像头组件和独立 Java 运行时，无需另装 Java。\n'
+           '仅支持兼容摄像头；上游 micam 分发许可尚未明确，详见 THIRD_PARTY_NOTICES.md。\n'
+           if with_camera else '本包未附带实验性摄像头传输组件，无法直接播放摄像头视频。\n') +
         '项目与源码：https://github.com/Songmanual/MijiaDeck\n', encoding='utf-8-sig')
     # Preserve installed license texts and versions for bundled dependencies.
     versions = {}
@@ -109,12 +123,17 @@ def main():
     (bundle / 'build-info.json').write_text(json.dumps({
         'version': __version__, 'python': sys.version.split()[0],
         'packager': 'PyInstaller ' + PyInstaller.__version__, 'dependencies': versions,
-        'camera_backend_included': False,
+        'camera_backend_included': with_camera,
+        'camera_source_commit': '2cc9d9e7607014d1d05c17bc5676544fbb0d5d24' if with_camera else None,
+        'camera_upstream_license': 'not confirmed' if with_camera else None,
+        'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
     }, ensure_ascii=False, indent=2), encoding='utf-8')
     forbidden = {'auth.json', 'settings.json', 'tray.json', 'workbench.json',
                  'devices_cache.json', 'account_profiles.json', 'device_icons.json'}
     for path in bundle.rglob('*'):
-        if path.is_file() and (path.name in forbidden or path.suffix == '.jar'):
+        allowed_relay = with_camera and (path == camera_target / 'camera-relay.jar' or
+                                         path.is_relative_to(camera_target / 'runtime'))
+        if path.is_file() and (path.name in forbidden or (path.suffix == '.jar' and not allowed_relay)):
             raise RuntimeError('Unexpected private or camera backend file: ' + str(path.relative_to(bundle)))
     archive = output / f'MijiaDeck-v{__version__}-windows-x64.zip'
     with ZipFile(archive, 'w', ZIP_DEFLATED, compresslevel=6) as package:

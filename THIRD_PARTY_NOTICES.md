@@ -26,9 +26,9 @@ Pinned reference commit: 2cc9d9e7607014d1d05c17bc5676544fbb0d5d24
 
 CameraRelay.java is the local adapter used for experimental testing. The upstream transport source is not checked into this repository. No explicit redistribution license was found at the pinned revision. Attribution alone is not redistribution permission.
 
-Do not include the locally built camera-relay.jar or its linked upstream transport classes in a public release until permission or an applicable license has been confirmed. Local generated runtime directories and binaries are ignored by Git. See tools/camera_relay/README.md.
+The maintainer has elected to include the compiled camera-relay.jar and its linked upstream transport classes in the v1.0.1 full distribution. **Upstream redistribution permission has not been confirmed.** The project being free of charge, non-commercial and open source does not itself grant that permission. This notice records the unresolved status; it does not replace permission or relicense upstream code under MijiaDeck's GPL. Generated binaries remain excluded from the Git source tree. See tools/camera_relay/README.md.
 
-If a Java runtime is distributed later, preserve its legal/ notices and comply with the runtime's applicable license terms.
+The full distribution includes a reduced Temurin/OpenJDK 21 runtime. Its `legal/` notices and `release` metadata are preserved next to its files. OpenJDK source is available from https://github.com/adoptium/temurin21-binaries and https://github.com/openjdk/jdk21u ; consult the bundled runtime metadata for its build version. No system-wide Java installation is required.
 
 ## Branding
 

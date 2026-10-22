@@ -4,9 +4,13 @@
 
 **让米家智能设备，在 Windows 上更方便地查看、管理和控制。**
 
-MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备放进卡片和系统托盘，在电脑上开关灯、查看温湿度、执行手动场景，或者向小爱同学发送文字指令，减少反复拿起手机的步骤。
+MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望在电脑上完成常用米家操作的用户提供桌面替代方案。工作、学习或听音乐时，不必反复拿起手机：开关设备、查看温湿度、执行场景、远程看摄像头，或者直接给小爱音箱输入文字指令，都可以在电脑上完成。
 
-**A Windows desktop dashboard for Xiaomi Mi Home (Mijia).** Manage smart-home devices, pin quick controls to the system tray, run scenes and send text commands to XiaoAI — with light/dark themes and custom accent colors. The current interface is primarily in Chinese.
+**摄像头远程查看 · 托盘切换小爱音箱 · 播放与音量控制 · 小爱文字指令**
+
+摄像头预览支持兼容设备的实时画面和鼠标拖动云台，不要求电脑与摄像头处于同一个局域网。托盘下拉菜单可选择要控制的小爱音箱，播放、暂停、切歌、音量调整和文字指令跟随所选音箱，方便在多个房间的设备之间切换。
+
+**A free, open-source Windows desktop client for Xiaomi Mi Home (Mijia).** Control smart-home devices, view compatible cameras remotely with mouse-drag pan/tilt, choose a XiaoAI speaker from the system tray, control playback and volume, run scenes and send text commands to the selected speaker. Light/dark themes and custom accent colors make it fit your desktop. The current interface is primarily in Chinese. A macOS edition is planned, but not yet available.
 
 基于 [MiHome-Windows](https://github.com/huanyuejue/MiHome-Windows) 改进，延续 GPL-3.0-or-later 许可证并保留上游署名。MijiaDeck 与小米、米家官方没有隶属关系。
 
@@ -34,13 +38,13 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 - **房间导航**：横向滚动和拖动浏览房间；右侧列表可直接跳转，并显示对应设备数量。
 - **托盘快捷操作**：把常用设备和手动场景放进托盘，不必每次打开主窗口；支持单列、双列和排序。
 - **可移动的托盘悬浮窗**：拖动顶部空白区调整位置，重启后记忆；托盘右键可还原窗口位置。
-- **小爱同学文字指令**：输入“打开客厅灯”等指令，主窗口和托盘跟随同一个默认小爱音箱。
-- **音箱控制**：在托盘查看、调整音量，使用设备支持的播放、暂停和切歌功能。
-- **远程摄像头预览（实验性）**：在电脑上查看兼容米家摄像头的实时画面，拖动画面调整云台角度；支持画质切换、静音和全屏。需额外摄像头组件，首发公开便携包暂不附带，详见下文。
+- **小爱同学文字指令**：不方便开口时，也能输入“打开客厅灯”等指令，让所选小爱音箱执行；主窗口与托盘共享音箱选择。
+- **托盘切换音箱与播放控制**：在下拉菜单选择要控制的房间音箱，调整音量、播放、暂停、上一首或下一首，不必打开主窗口。这是切换受控小爱音箱，不是切换电脑本身的音频输出。
+- **远程摄像头预览（实验性）**：在电脑上查看兼容米家摄像头的实时画面，拖动画面调整云台角度；支持画质切换、静音和全屏。v1.0.1 完整版随包提供传输组件和独立 Java 运行时，适配与来源说明见下文。
 - **适应日常使用的界面**：浅色、深色、跟随系统；四种主题色和自定义 HEX 色值；支持高 DPI 和界面缩放调整。
 - **清晰的状态反馈**：底栏显示当前版本；刷新设备时暂时切换为获取状态；支持退出登录。
 
-摄像头界面和远程预览为可选实验功能，组件分发状态见下文。不同设备实际可用功能取决于其型号、米家接口和固件。
+摄像头预览为实验性功能，不同设备实际可用功能取决于其型号、米家接口和固件。本项目提供常用桌面操作，不承诺与官方 APP 的全部功能一致。
 
 ## 支持系统 / System requirements
 
@@ -57,7 +61,7 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 
 ## 下载和使用 / Download & use
 
-首发版本为 **v1.0.0**，提供 **Windows x64 绿色免安装 ZIP**。[前往 Releases 下载](https://github.com/Songmanual/MijiaDeck/releases)。请选择 `MijiaDeck-v1.0.0-windows-x64.zip`；GitHub 自动提供的 `Source code` 是源码，不是可直接运行的软件。
+**v1.0.1 完整版**提供 **Windows x64 绿色免安装 ZIP**，包含实验性摄像头组件。[前往 Releases 下载](https://github.com/Songmanual/MijiaDeck/releases)。请选择 `MijiaDeck-v1.0.1-windows-x64.zip`；GitHub 自动提供的 `Source code` 是源码，不是可直接运行的软件。此前的 v1.0.0 不含摄像头传输组件。
 
 1. 下载并解压完整压缩包。
 2. 运行目录中的 `MijiaDeck.exe`，无需安装 Python。
@@ -80,19 +84,19 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 
 ## 摄像头预览 / Experimental camera preview
 
-**坐在电脑前，也能远程看看家里的情况。** 对于兼容型号，在配置摄像头组件后，可从设备卡片打开独立预览窗口，通过公网中继查看实时画面，不要求电脑与摄像头处于同一个局域网。使用方式类似米家 APP 中的实时查看；这是第三方实验实现，并不具备官方 APP 的全部摄像头功能。
+**坐在电脑前，也能远程看看家里的情况。** 对于兼容型号，可从设备卡片打开独立预览窗口，通过公网中继查看实时画面，不要求电脑与摄像头处于同一个局域网。v1.0.1 完整版已携带所需组件，无需另装 Java。使用方式类似米家 APP 中的实时查看；这是第三方实验实现，并不具备官方 APP 的全部摄像头功能。
 
 - **实时查看与云台控制**：在视频区域按住鼠标拖动，调整兼容云台摄像头的上下、左右角度。
 - **独立预览窗口**：支持画质切换、静音和全屏；默认优先流畅画质。
 - **减少重复加载**：调整窗口大小、最小化后还原保持当前连接；关闭预览窗口后释放视频连接。
 - **连接条件**：摄像头需在线，当前网络允许相应的远程传输；首次授权和中继连接可能需要等待。
 
-**Experimental remote camera viewing for compatible Xiaomi Mi Home cameras.** With the separate camera backend configured, view a live stream over an Internet relay, drag the picture to pan/tilt compatible cameras, switch quality and use fullscreen. Resizing or minimizing the preview keeps the session alive. This is a third-party implementation, not full feature parity with the official Mi Home app. The public portable package does not currently bundle the required backend.
+**Experimental remote camera viewing for compatible Xiaomi Mi Home cameras.** The v1.0.1 full distribution includes the relay and a private Java runtime. View a live stream over an Internet relay, drag the picture to pan/tilt compatible cameras, switch quality and use fullscreen. Resizing or minimizing the preview keeps the session alive. This is a third-party implementation, not full feature parity with the official Mi Home app.
 
 - 当前已测试的型号包括 `chuangmi.camera.029a02`，不承诺所有米家摄像头都支持。
 - 云台没有可靠的“到位”反馈，目前采用单次拖动指令、短暂冷却和后续视频帧解锁。
-- 远程传输参考 [eugeneRover/micam](https://github.com/eugeneRover/micam)。当前固定源码版本未找到明确分发许可证，**公开便携包暂不能默认附带该组件**；来源注明不替代分发许可确认。
-- 本仓库不包含 micam 的源文件、编译 JAR 或 Java 运行时。组件状态和许可确认见 [第三方说明](THIRD_PARTY_NOTICES.md)。
+- 远程传输基于 [eugeneRover/micam](https://github.com/eugeneRover/micam) 的固定版本。**尚未找到明确的上游分发许可证，相关授权未确认。** 维护者选择随完整版提供编译组件；免费、非商业用途和来源注明不等于获得上游许可，也不会把上游代码自动变为本项目的 GPL 代码。见 [第三方说明](THIRD_PARTY_NOTICES.md)。
+- Git 源码树不包含上游源文件、生成的 JAR 或 Java 运行时；构建脚本从固定源码版本生成组件，完整包保留来源、版本与 Java 的许可文件。
 
 任何演示摄像头画面都应明确标为示意，避免被误认为真实设备录像或型号兼容性证明。
 
@@ -110,17 +114,23 @@ python -m venv .venv
 
 ```powershell
 .venv\Scripts\python.exe -m pip install pyinstaller==6.16.0 PySide6==6.8.3
-.venv\Scripts\python.exe tools/build_portable.py
+.venv\Scripts\python.exe tools/install_camera_backend.py
+.venv\Scripts\python.exe tools/build_portable.py --with-camera
 .venv\Scripts\python.exe tools/test_portable.py
 ```
 
-产物位于 `dist/portable/`，包含 ZIP 与 SHA256 校验文件。脚本使用资源白名单，不复制个人配置、账号或摄像头 JAR。依赖版本写入包内 `build-info.json`，许可证、源码地址及共享库替换说明见 [依赖源码说明](docs/DEPENDENCY_SOURCES.md)。更新随包许可文本可执行 `python tools/collect_release_licenses.py`。
+产物位于 `dist/portable/`，包含 ZIP 与 SHA256 校验文件。脚本使用资源白名单，不复制个人配置或账号；`--with-camera` 明确加入生成的摄像头 JAR 和独立运行时。依赖版本和源码提交写入包内 `build-info.json`，许可文本、源码地址及共享库替换说明见 [依赖源码说明](docs/DEPENDENCY_SOURCES.md)。更新随包许可文本可执行 `python tools/collect_release_licenses.py`。
 
 另一条构建路线是 `build.ps1`（Nuitka standalone 目录版，需要 VS Build Tools 2022）。
 
 重绘品牌图标：`python tools/generate_brand_icons.py`（额外需要 Pillow）。
 
 生成示例截图：`python tools/render_demo_screenshots.py`；脚本使用虚构设备、临时配置和禁用网络的任务执行器，不读取真实登录信息。
+
+## 后续计划 / Roadmap
+
+- **macOS 客户端**：计划适配窗口、菜单栏快捷控制、设备卡片和相关交互；当前尚未发布 macOS 安装包，具体进度后续公布。
+- 持续改善摄像头连接体验，补充兼容型号和真实设备验证。
 
 ## 开源致谢 / Credits
 

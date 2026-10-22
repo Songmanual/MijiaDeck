@@ -12,9 +12,11 @@ Java runtime is created locally; users need no system-wide Java installation.
 The runtime preserves its legal/ notices. The source checkout and full JDK are
 only temporary build inputs. Generated binaries/runtime are excluded from Git.
 
-This is a local experiment. The transport repository has no explicit license
-file at this commit. Its source has not been copied into this repository; confirm
-upstream reuse/distribution permission before publishing bundled binaries.
+This is experimental. The transport repository has no explicit license file at
+this commit, and upstream redistribution permission has not been confirmed.
+The maintainer has elected to include a compiled relay in the v1.0.1 full build;
+this does not establish permission or relicense upstream code. Its source is
+not copied into the Git tree. See THIRD_PARTY_NOTICES.md for the recorded status.
 
 Existing MiHome cloud authentication prepares fresh X25519 video keys, the
 camera UID and relay-server init string. Only these temporary values are sent to

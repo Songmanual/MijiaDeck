@@ -53,6 +53,16 @@ def check_package(report_path: str) -> int:
         qr.add_data('MijiaDeck offline package check')
         qr.make(fit=True)
         report['checks'].append('qr-login-dependency')
+        java = resource_path('tools/camera_relay/runtime/bin/java.exe')
+        relay = resource_path('tools/camera_relay/camera-relay.jar')
+        if java.exists() or relay.exists():
+            import subprocess
+            result = subprocess.run([str(java), '-cp', str(relay), 'CameraRelay', '--check'],
+                                    capture_output=True, text=True, timeout=20,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            if result.returncode != 0 or 'CAMERA_RELAY_2' not in result.stdout:
+                raise RuntimeError('Bundled camera relay offline check failed')
+            report['checks'].append('camera-relay-offline-check')
         report.update(ok=True, version=__version__, packaged=is_packaged(),
                       python=sys.version.split()[0])
     except Exception as exc:

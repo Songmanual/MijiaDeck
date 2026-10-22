@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to build and attach the verified ZIP to
+        description: Release tag matching the source version (created after checks pass)
         required: true
-        default: v1.0.0
+        default: v1.0.1
         type: string
 
 permissions:
@@ -24,13 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           architecture: x64
       - name: Install runtime and packaging dependencies
         run: python -m pip install . PySide6==6.8.3 pyinstaller==6.16.0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: x64
+      - name: Build pinned camera backend and private Java runtime
+        shell: pwsh
+        run: python tools/install_camera_backend.py --jdk "$env:JAVA_HOME"
       - name: Run offline regression checks
         env:
           QT_QPA_PLATFORM: offscreen
@@ -41,7 +49,7 @@ jobs:
           tests.theme_color_test tests.tray_position_test tests.tray_room_filter_test
           tests.tray_settings_test tests.voice_layout_test tests.window_frame_test
       - name: Build portable ZIP and collect licenses
-        run: python tools/build_portable.py
+        run: python tools/build_portable.py --with-camera
       - name: Validate relocated executable without Python on PATH
         run: python tools/test_portable.py
       - name: Retain build and check artifacts
@@ -59,4 +67,13 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         shell: pwsh
         run: |
-          gh release upload "$env:RELEASE_TAG" (Get-ChildItem dist/portable/*.zip).FullName (Get-ChildItem dist/portable/*.sha256).FullName --repo "$env:GITHUB_REPOSITORY" --clobber
+          $sourceTag = python -c "from app import __version__; print('v' + __version__)"
+          if ($env:RELEASE_TAG -ne $sourceTag) { throw "Release tag does not match the source version" }
+          $assets = @((Get-ChildItem dist/portable/*.zip).FullName, (Get-ChildItem dist/portable/*.sha256).FullName)
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --clobber
+          } else {
+            gh release create "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "MijiaDeck $env:RELEASE_TAG · 摄像头完整版" --notes-file "docs/release-$env:RELEASE_TAG.md"
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Release upload failed" }
