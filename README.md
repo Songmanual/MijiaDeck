@@ -36,6 +36,7 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 - **可移动的托盘悬浮窗**：拖动顶部空白区调整位置，重启后记忆；托盘右键可还原窗口位置。
 - **小爱同学文字指令**：输入“打开客厅灯”等指令，主窗口和托盘跟随同一个默认小爱音箱。
 - **音箱控制**：在托盘查看、调整音量，使用设备支持的播放、暂停和切歌功能。
+- **远程摄像头预览（实验性）**：在电脑上查看兼容米家摄像头的实时画面，拖动画面调整云台角度；支持画质切换、静音和全屏。需额外摄像头组件，首发公开便携包暂不附带，详见下文。
 - **适应日常使用的界面**：浅色、深色、跟随系统；四种主题色和自定义 HEX 色值；支持高 DPI 和界面缩放调整。
 - **清晰的状态反馈**：底栏显示当前版本；刷新设备时暂时切换为获取状态；支持退出登录。
 
@@ -79,7 +80,14 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 
 ## 摄像头预览 / Experimental camera preview
 
-本地开发版已经接入独立摄像头窗口、流畅画质优先、静音、全屏和部分设备的云台拖动。最小化和还原保持连接，关闭预览窗口才释放视频连接。
+**坐在电脑前，也能远程看看家里的情况。** 对于兼容型号，在配置摄像头组件后，可从设备卡片打开独立预览窗口，通过公网中继查看实时画面，不要求电脑与摄像头处于同一个局域网。使用方式类似米家 APP 中的实时查看；这是第三方实验实现，并不具备官方 APP 的全部摄像头功能。
+
+- **实时查看与云台控制**：在视频区域按住鼠标拖动，调整兼容云台摄像头的上下、左右角度。
+- **独立预览窗口**：支持画质切换、静音和全屏；默认优先流畅画质。
+- **减少重复加载**：调整窗口大小、最小化后还原保持当前连接；关闭预览窗口后释放视频连接。
+- **连接条件**：摄像头需在线，当前网络允许相应的远程传输；首次授权和中继连接可能需要等待。
+
+**Experimental remote camera viewing for compatible Xiaomi Mi Home cameras.** With the separate camera backend configured, view a live stream over an Internet relay, drag the picture to pan/tilt compatible cameras, switch quality and use fullscreen. Resizing or minimizing the preview keeps the session alive. This is a third-party implementation, not full feature parity with the official Mi Home app. The public portable package does not currently bundle the required backend.
 
 - 当前已测试的型号包括 `chuangmi.camera.029a02`，不承诺所有米家摄像头都支持。
 - 云台没有可靠的“到位”反馈，目前采用单次拖动指令、短暂冷却和后续视频帧解锁。
