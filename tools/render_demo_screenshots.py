@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from PySide6.QtCore import QEvent, QTimer
 from PySide6.QtGui import QFont, QFontDatabase, QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 from app.core.models import DeviceInfo
 from app.ui import main_window
 from app.ui.tray.quick_window import TrayQuickWindow
@@ -147,6 +147,29 @@ def render_camera(mode, output):
     app.processEvents()
 
 
+def render_settings(mode, output):
+    from app.core import settings_store
+    from app.ui.settings_dialog import SettingsDialog
+    settings_store.set_theme_mode(mode)
+    settings_store.set_theme_color('blue')
+    apply_theme(mode, 'blue')
+    parent = QWidget()
+    parent.resize(1160, 740)
+    parent.show()
+    speaker = DeviceInfo('demo-speaker', '客厅音箱', 'demo.wifispeaker.sample',
+                         '示例家庭', '客厅', True)
+    window = SettingsDialog(parent, devices=[speaker])
+    window.show()
+    QTest.qWait(240)
+    QApplication.instance().processEvents()
+    assert window._panel.grab().save(str(output / f'settings-{mode}.jpg'), 'JPG', 91)
+    window.hide()
+    parent.hide()
+    window.deleteLater()
+    parent.deleteLater()
+    QApplication.instance().sendPostedEvents(None, QEvent.DeferredDelete)
+
+
 def main():
     if '--theme' not in sys.argv:
         import subprocess
@@ -154,6 +177,8 @@ def main():
             command = [sys.executable, str(Path(__file__).resolve()), '--theme', mode]
             if '--camera-only' in sys.argv:
                 command.append('--camera-only')
+            if '--settings-only' in sys.argv:
+                command.append('--settings-only')
             subprocess.run(command, check=True)
         return
     # SiliconUI's import reads Windows DPI; override before creating QApplication.
@@ -175,7 +200,9 @@ def main():
         mode = sys.argv[sys.argv.index('--theme') + 1]
         if mode not in ('light', 'dark'):
             raise ValueError('Unknown screenshot theme')
-        if '--camera-only' in sys.argv:
+        if '--settings-only' in sys.argv:
+            render_settings(mode, output)
+        elif '--camera-only' in sys.argv:
             render_camera(mode, output)
         else:
             render(mode, output)

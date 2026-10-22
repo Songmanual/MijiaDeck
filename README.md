@@ -18,17 +18,13 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 
 以下截图使用实际界面和**虚构示例数据**渲染，不包含真实账号、家庭或摄像头画面。设备种类仅为界面演示，不代表全部型号均已适配。
 
-### 浅色模式 / Light mode
+### 主界面 / Main window
 
 ![MijiaDeck 米家 Windows 桌面客户端浅色模式：设备卡片、房间分类和小爱文字控制](docs/images/main-light.png)
 
-### 深色模式 / Dark mode
-
-![MijiaDeck 小米智能家居 Windows 管理工具深色模式](docs/images/main-dark.png)
-
 ### 托盘快捷控制 / System tray quick controls
 
-<p><img src="docs/images/tray-light.png" width="310" alt="米家托盘快捷控制浅色模式"><img src="docs/images/tray-dark.png" width="310" alt="Xiaomi Mi Home Windows system tray controls in dark mode"></p>
+<p><img src="docs/images/tray-light.png" width="310" alt="米家托盘快捷控制"></p>
 
 ### 摄像头独立窗口 / Remote camera preview
 
@@ -36,12 +32,11 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 
 ![MijiaDeck 米家摄像头 Windows 远程预览窗口：鼠标拖动云台、画质切换和全屏，画面为 AI 生成示意](docs/images/camera-light.jpg)
 
-<details>
-<summary>查看深色模式 / Dark camera window</summary>
+### 外观设置 / Appearance settings
 
-![Xiaomi Mi Home camera preview in MijiaDeck dark mode, with an AI-generated demonstration scene](docs/images/camera-dark.jpg)
+支持浅色、深色与跟随系统，提供四种主题色、自定义色值和界面缩放。深色效果在设置截图中展示。
 
-</details>
+![MijiaDeck 米家 Windows 客户端外观设置：深色模式、主题色和界面缩放](docs/images/settings-dark.jpg)
 
 ## 为什么做 MijiaDeck
 
