@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build and attach the verified ZIP to
+        required: true
+        default: v1.0.0
+        type: string
 
 permissions:
   contents: write
@@ -12,8 +18,13 @@ jobs:
   windows-x64:
     runs-on: windows-2022
     timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -42,10 +53,10 @@ jobs:
             dist/portable/*.sha256
             build/packaged-check.json
       - name: Attach verified portable package to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         shell: pwsh
         run: |
           gh release upload "$env:RELEASE_TAG" (Get-ChildItem dist/portable/*.zip).FullName (Get-ChildItem dist/portable/*.sha256).FullName --repo "$env:GITHUB_REPOSITORY" --clobber
