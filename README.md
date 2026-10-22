@@ -30,6 +30,19 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 
 <p><img src="docs/images/tray-light.png" width="310" alt="米家托盘快捷控制浅色模式"><img src="docs/images/tray-dark.png" width="310" alt="Xiaomi Mi Home Windows system tray controls in dark mode"></p>
 
+### 摄像头独立窗口 / Remote camera preview
+
+实际摄像头窗口界面，展示静音、画质切换、全屏与拖动云台提示。**客厅画面为 AI 生成的虚构示意图，不是真实设备录像，也不作为型号兼容性证明。**
+
+![MijiaDeck 米家摄像头 Windows 远程预览窗口：鼠标拖动云台、画质切换和全屏，画面为 AI 生成示意](docs/images/camera-light.jpg)
+
+<details>
+<summary>查看深色模式 / Dark camera window</summary>
+
+![Xiaomi Mi Home camera preview in MijiaDeck dark mode, with an AI-generated demonstration scene](docs/images/camera-dark.jpg)
+
+</details>
+
 ## 为什么做 MijiaDeck
 
 坐在电脑前时，开关设备、查看房间状态等操作，也应该能直接在桌面完成。

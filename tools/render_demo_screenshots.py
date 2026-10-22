@@ -11,9 +11,9 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from PySide6.QtCore import QEvent, QTimer
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QFont, QFontDatabase, QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from app.core.models import DeviceInfo
 from app.ui import main_window
 from app.ui.tray.quick_window import TrayQuickWindow
@@ -115,11 +115,46 @@ def render(mode, output):
     app.processEvents()
 
 
+def render_camera(mode, output):
+    from app.ui.device_dialog import DeviceDetailDialog
+    apply_theme(mode, 'blue')
+    device = DeviceInfo('demo-camera', '米家智能摄像机 · 示例',
+                        'chuangmi.camera.029a02', '示例家庭', '示例客厅', True)
+    window = DeviceDetailDialog(Mock(), DemoJobs(), device)
+    window._camera_positioned = True
+    window.resize(900, 600)
+    window.show()
+    app = QApplication.instance()
+    app.processEvents()
+    camera = window._camera
+    frame = QImage(str(output / 'camera-demo-scene.jpg'))
+    if frame.isNull():
+        raise RuntimeError('Missing fictional camera demonstration frame')
+    camera._power.set_state(True)
+    camera._canvas.set_frame(frame)
+    camera._canvas.set_controls_enabled(True)
+    label = QLabel('示意画面 · AI 生成', camera._canvas)
+    label.setStyleSheet('color: white; background: rgba(0,0,0,105); padding: 5px 9px; border-radius: 5px; font-size: 8pt;')
+    label.adjustSize()
+    label.move(camera._canvas.width() - label.width() - 12, 12)
+    label.show()
+    QTest.qWait(120)
+    app.processEvents()
+    assert window.grab().save(str(output / f'camera-{mode}.jpg'), 'JPG', 91)
+    window.hide()
+    window.deleteLater()
+    app.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
+
+
 def main():
     if '--theme' not in sys.argv:
         import subprocess
         for mode in ('light', 'dark'):
-            subprocess.run([sys.executable, str(Path(__file__).resolve()), '--theme', mode], check=True)
+            command = [sys.executable, str(Path(__file__).resolve()), '--theme', mode]
+            if '--camera-only' in sys.argv:
+                command.append('--camera-only')
+            subprocess.run(command, check=True)
         return
     # SiliconUI's import reads Windows DPI; override before creating QApplication.
     os.environ['QT_SCALE_FACTOR'] = '1.5'
@@ -140,7 +175,10 @@ def main():
         mode = sys.argv[sys.argv.index('--theme') + 1]
         if mode not in ('light', 'dark'):
             raise ValueError('Unknown screenshot theme')
-        render(mode, output)
+        if '--camera-only' in sys.argv:
+            render_camera(mode, output)
+        else:
+            render(mode, output)
     print('Demo screenshots saved to docs/images (fictional data; no account/network access)')
 
 
