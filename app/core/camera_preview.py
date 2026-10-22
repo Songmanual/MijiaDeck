@@ -5,10 +5,44 @@ import base64
 import queue
 import socket
 import subprocess
+import sys
+from pathlib import Path
 import threading
 import time
 import uuid
 from app import resource_path
+
+_DLL_SEARCH_LOCK = threading.Lock()
+
+
+def launch_camera_helper(args, **kwargs):
+    """Do not make the independent JVM inherit PyInstaller's DLL search path."""
+    frozen = sys.platform == 'win32' and getattr(sys, 'frozen', False)
+    environment = dict(kwargs.pop('env', os.environ))
+    bundle = getattr(sys, '_MEIPASS', None)
+    if frozen and bundle:
+        bundle = Path(bundle).resolve()
+        environment['PATH'] = os.pathsep.join(
+            entry for entry in environment.get('PATH', '').split(os.pathsep)
+            if entry and not Path(entry).resolve().is_relative_to(bundle))
+    if not frozen:
+        return subprocess.Popen(args, env=environment, **kwargs)
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.GetDllDirectoryW.argtypes = [wintypes.DWORD, wintypes.LPWSTR]
+    kernel.GetDllDirectoryW.restype = wintypes.DWORD
+    kernel.SetDllDirectoryW.argtypes = [wintypes.LPCWSTR]
+    kernel.SetDllDirectoryW.restype = wintypes.BOOL
+    with _DLL_SEARCH_LOCK:
+        previous = ctypes.create_unicode_buffer(32768)
+        kernel.GetDllDirectoryW(len(previous), previous)
+        if not kernel.SetDllDirectoryW(None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return subprocess.Popen(args, env=environment, **kwargs)
+        finally:
+            kernel.SetDllDirectoryW(previous.value or None)
 
 
 class CameraPreviewError(Exception):
@@ -67,7 +101,7 @@ class CameraSession:
         with self._lock:
             if self.cancelled:
                 raise CameraPreviewError("预览已取消。")
-            process = subprocess.Popen(
+            process = launch_camera_helper(
                 [str(java), "-Xmx96m", "-XX:ErrorFile=NUL", "-cp", str(jar), "CameraRelay"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 text=True, encoding="utf-8", bufsize=1,

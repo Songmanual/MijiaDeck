@@ -57,11 +57,20 @@ def check_package(report_path: str) -> int:
         relay = resource_path('tools/camera_relay/camera-relay.jar')
         if java.exists() or relay.exists():
             import subprocess
-            result = subprocess.run([str(java), '-cp', str(relay), 'CameraRelay', '--check'],
-                                    capture_output=True, text=True, timeout=20,
-                                    creationflags=subprocess.CREATE_NO_WINDOW)
-            if result.returncode != 0 or 'CAMERA_RELAY_2' not in result.stdout:
-                raise RuntimeError('Bundled camera relay offline check failed')
+            from app.core.camera_preview import launch_camera_helper
+            with launch_camera_helper([str(java), '-cp', str(relay), 'CameraRelay', '--check'],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      text=True, encoding='utf-8',
+                                      creationflags=subprocess.CREATE_NO_WINDOW) as result:
+                try:
+                    output, errors = result.communicate(timeout=20)
+                except subprocess.TimeoutExpired:
+                    result.kill()
+                    result.communicate()
+                    raise
+                if result.returncode != 0 or 'CAMERA_RELAY_2' not in output:
+                    # --check uses no device, credential or video-session input.
+                    raise RuntimeError(f'Camera relay check exit={result.returncode}: {(errors or output)[:1000]}')
             report['checks'].append('camera-relay-offline-check')
         report.update(ok=True, version=__version__, packaged=is_packaged(),
                       python=sys.version.split()[0])
