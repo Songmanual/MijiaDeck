@@ -10,6 +10,10 @@ import os
 import sys
 import tempfile
 
+# The windowed executable has no stderr. Keep offline startup failures readable.
+if len(sys.argv) == 3 and sys.argv[1] == '--check-package':
+    sys.stdout = sys.stderr = open(sys.argv[2] + '.log', 'w', encoding='utf-8', buffering=1)
+
 from PySide6.QtCore import QLockFile, QTimer, Qt
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -176,6 +180,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-package':
+        from app.package_check import check_package
+        raise SystemExit(check_package(sys.argv[2]))
     _set_console_visible(os.environ.get("MIHOME_KEEP_CONSOLE") == "1")
     try:
         code = main()

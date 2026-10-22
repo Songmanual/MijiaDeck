@@ -57,14 +57,14 @@ MijiaDeck 是面向 Windows 的第三方米家桌面客户端。把常用设备�
 
 ## 下载和使用 / Download & use
 
-首发版本为 **v1.0.0**，计划以 **Windows x64 绿色免安装 ZIP** 提供。发布文件以仓库 Releases 页面为准。
+首发版本为 **v1.0.0**，提供 **Windows x64 绿色免安装 ZIP**。[前往 Releases 下载](https://github.com/Songmanual/MijiaDeck/releases)。请选择 `MijiaDeck-v1.0.0-windows-x64.zip`；GitHub 自动提供的 `Source code` 是源码，不是可直接运行的软件。
 
 1. 下载并解压完整压缩包。
 2. 运行目录中的 `MijiaDeck.exe`，无需安装 Python。
 3. 使用米家 APP 扫码登录。
 4. 在设置和托盘“编辑卡片”中选择自己的常用设备。
 
-不要只复制 EXE：旁边的 Qt、Python 和资源文件也是运行所需的组件。正式发布前，便携包仍需在未安装开发环境的机器上验证。
+不要只复制 EXE：旁边的 `_internal` 文件夹包含运行所需的 Qt、Python 和资源。便携包已通过本机隔离用户目录、移除 Python 开发路径、中文空格路径解压后的离线检查；这不等同于全新 Windows 虚拟机验证。Win11 完整实机回归、首次扫码登录与真实设备操作仍需要用户反馈。
 
 ### “绿色版”和“完全便携”的区别
 
@@ -106,7 +106,17 @@ python -m venv .venv
 .venv\Scripts\python.exe run.py
 ```
 
-构建脚本为 `build.ps1`，现有构建路线是 Nuitka standalone 目录版，需要 VS Build Tools 2022。构建资源、依赖清单和免开发环境测试通过后，才应将生成目录打包发布。
+首发便携包使用 PyInstaller 目录模式构建，不需要 C 编译器。建议使用 Python 3.12 x64 / PySide6 6.8.3：
+
+```powershell
+.venv\Scripts\python.exe -m pip install pyinstaller==6.16.0 PySide6==6.8.3
+.venv\Scripts\python.exe tools/build_portable.py
+.venv\Scripts\python.exe tools/test_portable.py
+```
+
+产物位于 `dist/portable/`，包含 ZIP 与 SHA256 校验文件。脚本使用资源白名单，不复制个人配置、账号或摄像头 JAR。依赖版本写入包内 `build-info.json`，许可证、源码地址及共享库替换说明见 [依赖源码说明](docs/DEPENDENCY_SOURCES.md)。更新随包许可文本可执行 `python tools/collect_release_licenses.py`。
+
+另一条构建路线是 `build.ps1`（Nuitka standalone 目录版，需要 VS Build Tools 2022）。
 
 重绘品牌图标：`python tools/generate_brand_icons.py`（额外需要 Pillow）。
 

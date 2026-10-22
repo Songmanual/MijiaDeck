@@ -19,6 +19,7 @@ __pycache__/
 dist/
 build/
 build_nuitka/
+build-source-check.json
 *.spec
 
 # ---- IDE / 编辑器 ----

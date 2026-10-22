@@ -1,0 +1,46 @@
+{
+  "Qt-LGPL-3.0.txt": {
+    "url": "https://raw.githubusercontent.com/pyside/pyside-setup/v6.8.3/LICENSES/LGPL-3.0-only.txt",
+    "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+  },
+  "FFmpeg-LGPL-2.1.txt": {
+    "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.1/COPYING.LGPLv2.1",
+    "sha256": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe"
+  },
+  "Qt-FFmpeg-attributions.json": {
+    "url": "https://raw.githubusercontent.com/qt/qtmultimedia/v6.8.3/src/3rdparty/ffmpeg/qt_attribution.json",
+    "sha256": "c3f51abb259f8218b2c1677f1ac2a0f1011b3a2add85e11a8a9bbfa893cbc53e"
+  },
+  "FontAwesome-6.7.2.txt": {
+    "url": "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.7.2/LICENSE.txt",
+    "sha256": "9b914eae88817d63b576eab5aafde7068c7a1abae125d7cdfb034f1da43a9afc"
+  },
+  "FontAwesome-5.15.4.txt": {
+    "url": "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/5.15.4/LICENSE.txt",
+    "sha256": "465b9cc2950960b0f70cca23b57f10a463f0d4a05df30a8aa3b3d43fded5b0c5"
+  },
+  "MaterialDesign-6.9.96.txt": {
+    "url": "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/v6.9.96/LICENSE",
+    "sha256": "3ae96c9a26d3dff8e09eee34a5c868897b0c654ed923c24c73c49db4895d92a6"
+  },
+  "MaterialDesign-5.9.55.txt": {
+    "url": "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/v5.9.55/LICENSE",
+    "sha256": "3ae96c9a26d3dff8e09eee34a5c868897b0c654ed923c24c73c49db4895d92a6"
+  },
+  "Codicons-0.0.36.txt": {
+    "url": "https://raw.githubusercontent.com/microsoft/vscode-codicons/0.0.36/LICENSE",
+    "sha256": "03a50105dc91319b3695398007341b9242b38831dab2e515ff4d7ba1f9826e2b"
+  },
+  "RemixIcon-2.5.0.txt": {
+    "url": "https://raw.githubusercontent.com/Remix-Design/RemixIcon/v2.5.0/License",
+    "sha256": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c"
+  },
+  "QtAwesome-font-sources.md": {
+    "url": "https://raw.githubusercontent.com/spyder-ide/qtawesome/v1.4.2/README.md",
+    "sha256": "8b3ee62ef8ee12383340d0a0dea252af1371a0180ed29f22a4746796834456c9"
+  },
+  "Phosphor.txt": {
+    "url": "https://raw.githubusercontent.com/phosphor-icons/web/legacy/LICENSE",
+    "sha256": "5bbc32e5e533c3c9afa1dda9a799d8ba2865b01f4abc15f417dee811b7f1182b"
+  }
+}

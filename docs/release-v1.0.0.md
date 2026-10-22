@@ -21,10 +21,17 @@
 
 这是免安装目录版，不能只移动一个 EXE；配置与凭据保存在当前 Windows 用户目录。不同设备功能以实际支持情况为准。
 
-## 发布前待完成
+## 下载
 
-- 便携版构建与未安装 Python 的环境验证。
-- 摄像头传输组件的分发许可确认；未确认前不附带相应 JAR 和运行时。
-- 新 GitHub 仓库创建、更新地址配置、第三方许可证收集。
+下载附件 `MijiaDeck-v1.0.0-windows-x64.zip`，完整解压后运行目录中的 `MijiaDeck.exe`。`Source code` 是源码包，不能直接运行。旁边的 `.sha256` 文件供校验下载完整性。
 
-本页是发布说明草稿，尚不代表 Release 已上传。
+## 已验证与限制
+
+- 70 项界面和交互回归检查完成：69 项通过，1 项因平台条件跳过。
+- ZIP 解压到中文与空格路径、隔离用户目录、移除 Python 开发路径后，图标、深浅色控件、Qt 多媒体初始化及二维码依赖检查通过。
+- 尚未完成全新 Windows 虚拟机、Windows 11 实机和该便携包的真实扫码/设备操作验证，欢迎反馈。
+- 摄像头预览需额外组件。分发许可尚未确认，**本公开包不附带 micam 传输 JAR 和 Java 运行时，不能直接播放摄像头视频**。
+
+MijiaDeck is a third-party Windows dashboard for Xiaomi Mi Home (Mijia). This release includes device cards, system tray quick controls, scenes, XiaoAI text commands and light/dark themes. Download the Windows x64 ZIP, extract the entire folder and run `MijiaDeck.exe`; Python installation is not required. The optional experimental camera streaming backend is not bundled.
+
+源码与第三方说明：https://github.com/Songmanual/MijiaDeck 。基于 MiHome-Windows 改进，遵循 GPL-3.0-or-later。

@@ -1,0 +1,6 @@
+Elusive Icons v2.0.0
+Created and maintained by Team Redux.
+Source: https://github.com/dovy/elusive-icons
+Fonts are distributed under the SIL Open Font License 1.1.
+The full SIL OFL 1.1 text is included in FontAwesome-6.7.2.txt in this directory.
+The font is supplied unmodified as part of QtAwesome.

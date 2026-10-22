@@ -4,7 +4,7 @@
 
 简介 / About：
 
-> 米家 / 小米智能设备 Windows 桌面控制台：设备卡片、托盘快捷控制、小爱同学文字指令与深浅主题。A Windows desktop dashboard for Xiaomi Mi Home (Mijia).
+> 米家 / 小米智能设备 Windows 桌面控制台：设备卡片、托盘控制、小爱文字指令、实验性摄像头远程预览。A Windows desktop dashboard for Xiaomi Mi Home (Mijia).
 
 Topics：
 
