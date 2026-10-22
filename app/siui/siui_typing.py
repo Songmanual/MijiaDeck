@@ -1,0 +1,36 @@
+"""
+## This module defines global shared types
+
+Use Python's Type Hint syntax, reference:
+- [`typing`](https://docs.python.org/3/library/typing.html)
+- [`PEP 484`](https://www.python.org/dev/peps/pep-0484/)
+- [`PEP 526`](https://www.python.org/dev/peps/pep-0526/)
+"""
+
+from typing import Optional, Union
+
+from PySide6.QtCore import QObject, Qt
+from PySide6.QtGui import QColor, QGradient, QPainter, QPen
+from PySide6.QtWidgets import QWidget
+
+try:
+    from typing_extensions import TypeAlias
+except ImportError:
+    from typing import TypeAlias  # Python 3.10+ has TypeAlias in typing module
+
+# 本地补丁：上游把 T_WidgetParent 的定义误放进 except 分支，
+# 环境装有 typing_extensions 时该类型不存在导致 12 处 import 失败
+T_WidgetParent: TypeAlias = Optional[QWidget]
+"""Type of widget parent"""
+
+T_ObjectParent: TypeAlias = Optional[QObject]
+"""Type of object parent"""
+
+T_PenStyle: TypeAlias = Union[QPen, Qt.PenStyle, QColor, Qt.GlobalColor]
+"""Type of QPen style"""
+
+T_Brush: TypeAlias = Optional[Union[QGradient, QColor, Qt.GlobalColor]]
+"""Type of QBrush"""
+
+T_RenderHint: TypeAlias = Optional[Union[QPainter.RenderHint, int]]
+"""Type of QPainter.RenderHint"""

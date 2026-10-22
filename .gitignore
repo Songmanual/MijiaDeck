@@ -1,0 +1,68 @@
+# ============================================
+# MiHome-Windows .gitignore
+# ============================================
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ---- 构建产物 ----
+*.egg-info/
+*.egg
+dist/
+build/
+build_nuitka/
+*.spec
+
+# ---- IDE / 编辑器 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- 系统文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 项目特定：认证与缓存 ----
+# 扫码登录后的认证文件包含账号凭据，绝不提交
+auth.json
+
+# 本地设备缓存（包含设备列表、token 等）
+devices_cache.json
+.mihome_cache/
+
+# 设备图标缓存（model -> 图标 URL 映射与图片文件）
+device_icons.json
+/icons/
+
+# 用户个性化配置（每个人不同）
+tray.json
+workbench.json
+settings.json
+# 原子写的临时残留（正常流程会被 os.replace 消费）
+*.json.tmp
+
+# ---- 日志 ----
+*.log
+logs/
+
+# Local-only experimental camera relay build and Java runtime
+tools/camera_relay/camera-relay.jar
+tools/camera_relay/runtime/
+tools/camera_relay/UPSTREAM-README.md
+
+# ---- 测试覆盖率 ----
+.coverage
+htmlcov/
+.pytest_cache/
+account_profiles.json

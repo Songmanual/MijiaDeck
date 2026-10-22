@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<title>MijiaDeck</title>
+<desc>User-supplied redrawn Mijia symbol with a charcoal background.</desc>
+<rect id="background" width="512" height="512" rx="96" fill="#303238"/>
+<g transform="translate(256,256) scale(0.855) translate(-256,-256)">
+<g id="mijia-symbol" fill="#FFFFFF" transform="translate(-56,-42)">
+<path id="upper-mark" d="M148 114 H210 L311 157 L414 114 H476 V205 L414 230 V181 L311 225 L211 181 V317 L148 344 Z"/>
+<path id="lower-mark" d="M414 275 L475 249 V324 C475 414 406 483 314 483 C245 483 186 449 161 382 L216 358 C234 398 269 421 314 421 C369 421 414 378 414 324 Z"/>
+</g>
+</g>
+</svg>

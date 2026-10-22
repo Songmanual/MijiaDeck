@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mijiadeck"
+version = "1.0.0"
+description = "MijiaDeck — 米家设备的 Windows 桌面控制端"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [{ name = "MiHome-Windows contributors" }]
+dependencies = [
+    # 上游 5.x 起设备规格改从 miot-spec.org 官方源按 spec_type 获取，
+    # 适配层已同步改造；仍锁大版本，升级前必须人工验证
+    "mijiaAPI>=5,<6",
+    "PySide6>=6.7",
+    # 登录对话框渲染二维码用；虽是 mijiaAPI 的传递依赖，仍显式声明防止被动移除
+    "qrcode>=8",
+    # Material Design 图标，用于所有 UI 图标渲染
+    "qtawesome>=1.4",
+    # SiliconUI 组件需要 numpy 进行动画插值计算
+    "numpy",
+    # SiliconUI 内置组件在 Python 3.10 下需要 Self / TypeAlias 类型别名
+    "typing_extensions",
+]
+
+[tool.setuptools.packages.find]
+# 自动发现全部子包：手工枚举曾漏掉 app.ui.tray 与 siui 的多个子包
+include = ["app", "app.*"]
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.package-data]
+# 运行期资源：非 editable 安装（pip install .）时也需要这些文件
+"app.ui" = ["*.png", "*.ico", "icons/*.svg"]
