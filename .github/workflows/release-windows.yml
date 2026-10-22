@@ -1,0 +1,51 @@
+name: Build Windows portable release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install runtime and packaging dependencies
+        run: python -m pip install . PySide6==6.8.3 pyinstaller==6.16.0
+      - name: Run offline regression checks
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          python -m unittest tests.branding_test tests.audio_sync_test
+          tests.camera_drag_test tests.camera_preview_test tests.camera_window_test
+          tests.footer_account_test tests.grid_width_test tests.room_tabs_test
+          tests.theme_color_test tests.tray_position_test tests.tray_room_filter_test
+          tests.tray_settings_test tests.voice_layout_test tests.window_frame_test
+      - name: Build portable ZIP and collect licenses
+        run: python tools/build_portable.py
+      - name: Validate relocated executable without Python on PATH
+        run: python tools/test_portable.py
+      - name: Retain build and check artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MijiaDeck-windows-x64
+          path: |
+            dist/portable/*.zip
+            dist/portable/*.sha256
+            build/packaged-check.json
+      - name: Attach verified portable package to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: pwsh
+        run: |
+          gh release upload "$env:RELEASE_TAG" (Get-ChildItem dist/portable/*.zip).FullName (Get-ChildItem dist/portable/*.sha256).FullName --repo "$env:GITHUB_REPOSITORY" --clobber
