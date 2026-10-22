@@ -9,10 +9,35 @@ import subprocess
 import sys
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
+from xml.dom import minidom
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from app import __version__
+
+
+def enable_java_utf8_paths(executable):
+    """Give only the bundled Java launcher a UTF-8 Windows code page (1903+)."""
+    from PyInstaller.utils.win32 import winmanifest
+    original = winmanifest.read_manifest_from_executable(str(executable))
+    if isinstance(original, tuple):
+        original = original[1]
+    document = minidom.parseString(original)
+    namespace = 'urn:schemas-microsoft-com:asm.v3'
+    settings = document.getElementsByTagNameNS(namespace, 'windowsSettings')
+    if settings:
+        settings = settings[0]
+    else:
+        application = document.createElementNS(namespace, 'application')
+        application.setAttribute('xmlns', namespace)
+        document.documentElement.appendChild(application)
+        settings = document.createElementNS(namespace, 'windowsSettings')
+        application.appendChild(settings)
+    codepage = document.createElement('activeCodePage')
+    codepage.setAttribute('xmlns', 'http://schemas.microsoft.com/SMI/2019/WindowsSettings')
+    codepage.appendChild(document.createTextNode('UTF-8'))
+    settings.appendChild(codepage)
+    winmanifest.write_manifest_to_executable(str(executable), document.toxml(encoding='utf-8'))
 
 
 def main():
@@ -60,6 +85,7 @@ def main():
         for name in ['camera-relay.jar', 'README.md', 'UPSTREAM-README.md']:
             shutil.copy2(backend / name, camera_target / name)
         shutil.copytree(backend / 'runtime', camera_target / 'runtime', dirs_exist_ok=True)
+        enable_java_utf8_paths(camera_target / 'runtime/bin/java.exe')
     elif camera_target.exists():
         raise RuntimeError('Existing camera files found; use a fresh build for a backend-free package')
     for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md']:
@@ -73,7 +99,7 @@ def main():
         'MijiaDeck ' + __version__ + '\n\n'
         '请先完整解压，再运行 MijiaDeck.exe，无需安装 Python。\n'
         '不能单独移动 EXE；_internal 文件夹是必需的运行组件。\n'
-        '支持 Windows 10 1809+ / Windows 11 x64；不支持 Win7 / Win8。\n'
+        '支持 Windows 10 1903+ / Windows 11 x64；不支持 Win7 / Win8。\n'
         '使用米家 APP 扫码登录。\n'
         '配置保存在 %LOCALAPPDATA%\\MijiaDeck；登录凭据在用户目录 .config\\mijia-api。\n'
         + ('本包包含实验性摄像头组件和独立 Java 运行时，无需另装 Java。\n'

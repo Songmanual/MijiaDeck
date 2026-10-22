@@ -50,7 +50,7 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 
 | 项目 | 说明 |
 |---|---|
-| 目标系统 | Windows 10 1809 及以上、Windows 11，64 位 x64 |
+| 目标系统 | Windows 10 1903 及以上、Windows 11，64 位 x64 |
 | Win7 / Win8 | 不支持当前版本 |
 | ARM Windows | 暂不提供原生 ARM64 发布包 |
 | 高 DPI | 跟随 Windows 缩放，并可在设置中额外调整 |

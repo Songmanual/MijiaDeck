@@ -33,3 +33,5 @@ The full distribution includes a reduced Temurin/OpenJDK 21 runtime. Its `legal/
 ## Branding
 
 The MijiaDeck symbol is derived from the vector artwork supplied by the project maintainer. References to Mijia, Mi Home and Xiaomi identify the supported ecosystem and do not imply official endorsement.
+
+The bundled Java launcher executable has its application manifest modified to request a per-process UTF-8 code page on Windows 10 1903+ for Unicode installation paths. This does not change the system locale. The modification is implemented in `tools/build_portable.py`; runtime legal notices and metadata are retained.
