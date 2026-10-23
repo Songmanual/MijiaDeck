@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Release tag matching the source version (created after checks pass)
         required: true
-        default: v1.0.1
+        default: v1.0.2
         type: string
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: >-
-          python -m unittest tests.branding_test tests.audio_sync_test
+          python -m unittest tests.windowed_startup_test tests.branding_test tests.audio_sync_test
           tests.camera_drag_test tests.camera_preview_test tests.camera_window_test
           tests.footer_account_test tests.grid_width_test tests.room_tabs_test
           tests.theme_color_test tests.tray_position_test tests.tray_room_filter_test
@@ -60,6 +60,7 @@ jobs:
             dist/portable/*.zip
             dist/portable/*.sha256
             build/packaged-check.json
+            build/startup-check.json
       - name: Attach verified portable package to release
         if: github.event_name == 'release' || inputs.release_tag != ''
         env:
@@ -74,6 +75,11 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --clobber
           } else {
-            gh release create "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "MijiaDeck $env:RELEASE_TAG · 摄像头完整版" --notes-file "docs/release-$env:RELEASE_TAG.md"
+            gh release create "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "MijiaDeck $env:RELEASE_TAG" --notes-file "docs/release-$env:RELEASE_TAG.md"
           }
           if ($LASTEXITCODE -ne 0) { throw "Release upload failed" }
+          # One-time correction of the initial release's descriptive title.
+          if ($sourceTag -eq 'v1.0.2') {
+            gh release edit v1.0.1 --repo "$env:GITHUB_REPOSITORY" --title "MijiaDeck v1.0.1" --notes-file docs/release-v1.0.1.md
+            if ($LASTEXITCODE -ne 0) { throw "Previous release title update failed" }
+          }

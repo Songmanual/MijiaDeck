@@ -10,9 +10,11 @@ import os
 import sys
 import tempfile
 
-# The windowed executable has no stderr. Keep offline startup failures readable.
-if len(sys.argv) == 3 and sys.argv[1] == '--check-package':
-    sys.stdout = sys.stderr = open(sys.argv[2] + '.log', 'w', encoding='utf-8', buffering=1)
+# PyInstaller --windowed and pythonw expose absent standard streams as None.
+# Dependencies inspect them during import; repair before importing any app code.
+for _name, _mode in [('stdin', 'r'), ('stdout', 'w'), ('stderr', 'w')]:
+    if getattr(sys, _name) is None:
+        setattr(sys, _name, open(os.devnull, _mode, encoding='utf-8'))
 
 from PySide6.QtCore import QLockFile, QTimer, Qt
 from PySide6.QtGui import QFont, QIcon
@@ -51,7 +53,7 @@ def _apply_ui_scale_env() -> None:
     os.environ["QT_SCALE_FACTOR"] = f"{get_ui_scale():g}"
 
 
-def main() -> int:
+def main(startup_check=None) -> int:
     if sys.platform == 'win32':
         try:
             import ctypes
@@ -76,7 +78,7 @@ def main() -> int:
     # 自重启（MIHOME_RESTARTED=1）时跳过：旧进程即将退出，
     # 此时锁/server 尚在，走正常单实例会被当成「唤起旧窗口」。
     server = None
-    if os.environ.get("MIHOME_RESTARTED") != "1":
+    if startup_check is None and os.environ.get("MIHOME_RESTARTED") != "1":
         lock_path = os.path.join(tempfile.gettempdir(), _LOCK_NAME)
         lock = QLockFile(lock_path)
         # 默认 30s 视为过期，若上次崩溃残留可自动接管
@@ -171,6 +173,8 @@ def main() -> int:
     # 登录检查放在 show 之后发起：回调经队列信号回到主线程，
     # 先启动事件循环可保证首次回调不被阻塞在窗口绘制之前
     window.start()
+    if startup_check is not None:
+        QTimer.singleShot(500, lambda: startup_check(app, window))
     if _start_hidden:
         # 事件循环转起来、后台加载完成后修剪工作集
         from app import trim_working_set
@@ -180,6 +184,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-startup':
+        from app.package_check import check_startup
+        raise SystemExit(check_startup(main, sys.argv[2]))
     if len(sys.argv) == 3 and sys.argv[1] == '--check-package':
         from app.package_check import check_package
         raise SystemExit(check_package(sys.argv[2]))

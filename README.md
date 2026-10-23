@@ -69,7 +69,7 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 
 ## 下载和使用 / Download & use
 
-**v1.0.1 完整版**提供 **Windows x64 绿色免安装 ZIP**，包含实验性摄像头组件。[前往 Releases 下载](https://github.com/Songmanual/MijiaDeck/releases)。请选择 `MijiaDeck-v1.0.1-windows-x64.zip`；GitHub 自动提供的 `Source code` 是源码，不是可直接运行的软件。此前的 v1.0.0 不含摄像头传输组件。
+**v1.0.2**提供 **Windows x64 绿色免安装 ZIP**，包含实验性摄像头组件。[前往 Releases 下载](https://github.com/Songmanual/MijiaDeck/releases)。请选择 `MijiaDeck-v1.0.2-windows-x64.zip`；GitHub 自动提供的 `Source code` 是源码，不是可直接运行的软件。此前的 v1.0.0 不含摄像头传输组件。
 
 1. 下载并解压完整压缩包。
 2. 运行目录中的 `MijiaDeck.exe`，无需安装 Python。

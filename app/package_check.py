@@ -6,6 +6,55 @@ import sys
 from pathlib import Path
 
 
+def check_startup(entrypoint, report_path):
+    """Run the real main-window/event-loop path with no account or cloud jobs."""
+    from contextlib import ExitStack
+    from tempfile import TemporaryDirectory
+    from unittest.mock import Mock, patch
+    from app.core import settings_store
+    from app.ui import main_window
+    from app import __version__, is_packaged
+
+    class OfflineJobs:
+        def __init__(self, parent=None):
+            pass
+
+        def submit(self, *args, **kwargs):
+            pass  # Never execute a credential, device or cloud operation.
+
+        def shutdown(self):
+            pass
+
+    report = {'ok': False, 'checks': []}
+
+    def ready(application, window):
+        try:
+            if not window.isVisible() or window.grab().isNull():
+                raise RuntimeError('Main window was not displayed and rendered')
+            report.update(ok=True, version=__version__, packaged=is_packaged(),
+                          checks=['windowed-entrypoint', 'main-window-startup', 'qt-event-loop'])
+        except Exception as error:
+            report['error'] = f'{type(error).__name__}: {error}'
+        finally:
+            window._force_quit = True
+            application.quit()
+
+    try:
+        with TemporaryDirectory() as folder, ExitStack() as stack:
+            stack.enter_context(patch('app.core._json_store.data_file',
+                                      side_effect=lambda name: Path(folder) / name))
+            stack.enter_context(patch('app.core._json_store.data_dir', return_value=Path(folder)))
+            stack.enter_context(patch.object(main_window, 'MijiaService', return_value=Mock()))
+            stack.enter_context(patch.object(main_window, 'JobExecutor', OfflineJobs))
+            settings_store.set_check_update_enabled(False)
+            settings_store.set_start_minimized(False)
+            entrypoint(ready)
+    except Exception as error:
+        report.update(ok=False, error=f'{type(error).__name__}: {error}')
+    Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    return 0 if report['ok'] else 1
+
+
 def check_package(report_path: str) -> int:
     os.environ['QT_QPA_PLATFORM'] = 'offscreen'
     report = {'ok': False, 'checks': []}

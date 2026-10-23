@@ -43,6 +43,18 @@ def main():
         info = json.loads((folder / 'MijiaDeck/build-info.json').read_text(encoding='utf-8'))
         if info['camera_backend_included'] and 'camera-relay-offline-check' not in data['checks']:
             raise RuntimeError('Camera backend was bundled but not validated')
+        startup_report = ROOT / 'build/startup-check.json'
+        startup_report.unlink(missing_ok=True)
+        # Keep the windowed bootloader's absent streams; never redirect them to
+        # a log before importing dependencies, which hid the v1.0.1 crash.
+        process = subprocess.run([str(folder / 'MijiaDeck/MijiaDeck.exe'),
+                                  '--check-startup', str(startup_report)],
+                                 cwd=folder, env=env, timeout=30)
+        startup = json.loads(startup_report.read_text(encoding='utf-8'))
+        print(json.dumps({'startup_exit_code': process.returncode, 'report': startup},
+                         ensure_ascii=False, indent=2))
+        if process.returncode or not startup['ok'] or not startup['packaged']:
+            raise RuntimeError('Windowed main-window startup failed')
 
 
 if __name__ == '__main__':
