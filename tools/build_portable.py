@@ -68,6 +68,7 @@ def main():
             '--distpath', str(output), '--workpath', str(ROOT / 'build/portable'),
             '--specpath', str(ROOT / 'build'), '--paths', str(ROOT),
             '--collect-submodules', 'app', '--collect-data', 'qtawesome',
+            '--hidden-import', 'Crypto.PublicKey._montgomery',
             '--copy-metadata', 'mijiaAPI', '--exclude-module', 'tkinter',
             '--exclude-module', 'pytest', '--exclude-module', 'matplotlib']
     for name in ['icon.png', 'icon.ico', 'tray_icon.png', 'tray_icon_light.png']:
@@ -76,6 +77,12 @@ def main():
     if '--repack' not in sys.argv:
         subprocess.run(args, cwd=ROOT, check=True)
     bundle = output / 'MijiaDeck'
+    # Some managed Python distributions have an SSLContext policy that loads
+    # this PEM beside ssl.py. Preserve it rather than changing TLS validation.
+    import ssl
+    ssl_policy = Path(ssl.__file__).with_name('codex-rejected-cas.pem')
+    if ssl_policy.is_file():
+        shutil.copy2(ssl_policy, bundle / '_internal' / ssl_policy.name)
     camera_target = bundle / '_internal/tools/camera_relay'
     if with_camera:
         backend = ROOT / 'tools/camera_relay'

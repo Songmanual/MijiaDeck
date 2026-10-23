@@ -6,6 +6,52 @@ import sys
 from pathlib import Path
 
 
+def check_login(report_path):
+    """Opt-in anonymous QR retrieval with a disposable, empty auth file.
+
+    Never scan, poll, sign in, read user credentials or record QR/session URLs.
+    """
+    import ssl
+    import traceback
+    from tempfile import TemporaryDirectory
+    import certifi
+    from mijiaAPI import mijiaAPI
+    report = {'ok': False, 'certificate_bundle_exists': Path(certifi.where()).is_file()}
+    try:
+        ssl.create_default_context(cafile=certifi.where())
+        report['tls_context_ok'] = True
+        with TemporaryDirectory() as folder:
+            client = mijiaAPI(auth_data_path=str(Path(folder) / 'auth.json'))
+            data = client._get_qr_login_data()
+            report['ok'] = bool(data.get('loginUrl'))
+            from PySide6.QtWidgets import QApplication
+            from unittest.mock import Mock
+            from app.ui.login_dialog import LoginDialog
+            application = QApplication.instance() or QApplication([])
+            dialog = LoginDialog(Mock(), Mock())
+            dialog._show_qr_image(data['loginUrl'])
+            report['qr_rendered'] = not dialog._qr_label.pixmap().isNull()
+            report['ok'] = report['ok'] and report['qr_rendered']
+            dialog.deleteLater()
+            application.processEvents()
+            session = getattr(client, 'session', None)
+            if session is not None:
+                session.close()
+    except Exception as error:
+        report['ok'] = False
+        # Frame locations identify missing frozen dependencies without logging
+        # request headers, credentials or temporary QR-login URLs.
+        report['frames'] = [dict(file=f.filename, line=f.lineno, function=f.name)
+                            for f in traceback.extract_tb(error.__traceback__)]
+        report['causes'] = []
+        while error is not None:
+            report['causes'].append(dict(type=type(error).__name__,
+                                        filename=str(getattr(error, 'filename', '') or '')))
+            error = error.__cause__ or error.__context__
+    Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    return 0 if report['ok'] else 1
+
+
 def check_startup(entrypoint, report_path):
     """Run the real main-window/event-loop path with no account or cloud jobs."""
     from contextlib import ExitStack
@@ -65,6 +111,8 @@ def check_package(report_path: str) -> int:
         from PySide6.QtMultimediaWidgets import QVideoWidget
         import qtawesome
         import qrcode
+        import ssl
+        import certifi
         from app import __version__, is_packaged, resource_path
         from app.core.service import MijiaService
         from app.ui.main_window import MainWindow
@@ -72,6 +120,10 @@ def check_package(report_path: str) -> int:
         from app.ui.volume_slider import VolumeSlider
 
         application = QApplication.instance() or QApplication([])
+        # Construct a real verified context, so missing auxiliary certificate
+        # files fail offline before a release can reach the login screen.
+        ssl.create_default_context(cafile=certifi.where())
+        report['checks'].append('https-tls-context')
         for name in ['icon.png', 'icon.ico', 'tray_icon.png', 'tray_icon_light.png']:
             path = resource_path('app/ui/' + name)
             if not path.is_file() or QIcon(str(path)).pixmap(32, 32).isNull():
@@ -94,6 +146,15 @@ def check_package(report_path: str) -> int:
             slider.close()
             slider.deleteLater()
         report['checks'].append('light-dark-widget-rendering')
+        from app.ui.tray_intro import TrayIntroDialog
+        introduction = TrayIntroDialog()
+        introduction.show()
+        application.processEvents()
+        if introduction.grab().isNull():
+            raise RuntimeError('Tray introduction rendering failed')
+        introduction.hide()
+        introduction.deleteLater()
+        report['checks'].append('first-run-tray-introduction')
         player = QMediaPlayer()
         video = QVideoWidget()
         player.setVideoOutput(video)
@@ -101,7 +162,17 @@ def check_package(report_path: str) -> int:
         qr = qrcode.QRCode()
         qr.add_data('MijiaDeck offline package check')
         qr.make(fit=True)
+        import io
+        qr.make_image().save(io.BytesIO(), format='PNG')
         report['checks'].append('qr-login-dependency')
+        from app.core.camera_access import build_camera_source
+        source = build_camera_source('offline-camera', 'chuangmi.camera.029a02',
+            lambda *_: {'vendor': {'vendor': 4, 'vendor_params': {
+                'p2p_id': 'offline-test', 'init_string': 'offline-test'}},
+                'public_key': 'ab' * 32, 'sign': 'offline-test'})
+        if len(source.client_public) != 64:
+            raise RuntimeError('Camera key generation failed')
+        report['checks'].append('camera-python-authorization')
         java = resource_path('tools/camera_relay/runtime/bin/java.exe')
         relay = resource_path('tools/camera_relay/camera-relay.jar')
         if java.exists() or relay.exists():

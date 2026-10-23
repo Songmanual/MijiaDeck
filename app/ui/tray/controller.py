@@ -4,7 +4,7 @@
 """系统托盘控制器：常驻图标 + 菜单 + 快捷窗口编排。"""
 
 from PySide6.QtCore import QElapsedTimer, QSize, QTimer
-from PySide6.QtGui import QAction, QCursor, QIcon
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from app.core.jobs import JobExecutor
@@ -58,14 +58,6 @@ class TrayController:
         style_popup_menu(menu)
         menu.aboutToShow.connect(lambda: style_popup_menu(menu))
         self._tray.setContextMenu(menu)
-        self._hover_elapsed = QElapsedTimer()
-        self._hover_fired = False
-        self._hover_opened = False
-        self._hover_timer = QTimer(main_window)
-        self._hover_timer.setInterval(50)
-        self._hover_timer.timeout.connect(self._check_tray_hover)
-        self._hover_timer.start()
-
         # 快捷窗口的信号接线统一在 _create_quick_window 内做一次，
         # 此处重复连接曾导致每次触发弹两次对话框
 
@@ -116,35 +108,6 @@ class TrayController:
         # 经方法转发而非构造期绑定信号：retheme 重建窗口后菜单仍指向新窗口
         self._quick.manage_requested.emit()
 
-    def _check_tray_hover(self) -> None:
-        cursor = QCursor.pos()
-        icon_rect = self._tray.geometry()
-        over_icon = (self._tray.isVisible() and not icon_rect.isEmpty()
-                     and icon_rect.contains(cursor))
-        quick = self._quick
-        if over_icon:
-            quick._leave_timer.stop()
-            if not self._hover_elapsed.isValid():
-                self._hover_elapsed.start()
-            menu = self._tray.contextMenu()
-            if (not self._hover_fired and self._hover_elapsed.elapsed() >= 400
-                    and not (menu and menu.isVisible())
-                    and not QApplication.activeModalWidget()):
-                self._hover_fired = True
-                if not quick.isVisible() and not quick.is_explicitly_visible():
-                    quick.show_near_tray()
-                    self._hover_opened = True
-        else:
-            self._hover_elapsed.invalidate()
-            self._hover_fired = False
-            if self._hover_opened:
-                if not quick.isVisible():
-                    self._hover_opened = False
-                elif quick.frameGeometry().contains(cursor):
-                    quick._leave_timer.stop()
-                elif not quick._leave_timer.isActive() and not quick.is_animating():
-                    quick._leave_timer.start()
-
     def _on_activated(self, reason) -> None:
         if reason not in (QSystemTrayIcon.ActivationReason.Trigger,
                           QSystemTrayIcon.ActivationReason.DoubleClick):
@@ -156,8 +119,6 @@ class TrayController:
                 self._last_tray_click.start()
             return
         self._last_tray_click.start()
-        self._hover_fired = True
-        self._hover_opened = False
         quick = self._quick
         visible = quick.isVisible() or quick.is_explicitly_visible()
         if quick.is_animating():
@@ -176,7 +137,6 @@ class TrayController:
             self._main.showNormal()
 
     def _quit(self) -> None:
-        self._hover_timer.stop()
         self._tray.hide()
         # 标记为强制退出，避免 closeEvent 拦截为隐藏到托盘
         self._main.request_force_quit()

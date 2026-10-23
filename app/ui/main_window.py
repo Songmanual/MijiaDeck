@@ -630,7 +630,6 @@ class MainWindow(QMainWindow):
             window.close()
         if self._tray is not None:
             self._tray.hide_quick()
-            self._tray._hover_timer.stop()
             self._tray.set_tray_visible(False)
         self.centralWidget().setEnabled(False)
         self._show_status('正在退出账号…', 0)
@@ -645,7 +644,6 @@ class MainWindow(QMainWindow):
         if self._tray is not None:
             from app.core.settings_store import get_minimize_to_tray
             self._tray.set_tray_visible(get_minimize_to_tray())
-            self._tray._hover_timer.start()
 
     def _account_change_failed(self, error):
         self._resume_account_ui()

@@ -58,6 +58,8 @@ class LoginDialog(QDialog):
         layout.addWidget(self._qr_label)
 
         self._status_label = QLabel(alignment=Qt.AlignCenter)
+        self._status_label.setWordWrap(True)
+        self._status_label.setMaximumWidth(300)
         layout.addWidget(self._status_label)
 
         self._retry_btn = QPushButton("重新获取二维码")

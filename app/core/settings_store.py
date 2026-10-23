@@ -31,6 +31,7 @@ _DEFAULTS: dict = {
     "tray_columns": 2,  # 托盘快捷窗口卡片列数：1 或 2
     "tray_position": None,  # screen name and logical offsets within its work area
     "check_update_enabled": True,  # 启动时自动检查 GitHub 新版本
+    "tray_intro_seen": False,  # First-use guidance for the click-only tray controls.
 }
 
 
@@ -62,6 +63,20 @@ def set_minimize_to_tray(value: bool) -> None:
 def get_start_minimized() -> bool:
     """启动时是否以托盘方式静默启动，不唤出主界面。默认 False。"""
     return bool(_read_raw().get("start_minimized", False))
+
+
+def get_tray_intro_seen() -> bool:
+    return bool(_read_raw().get('tray_intro_seen', False))
+
+
+def set_tray_intro_seen(value: bool) -> None:
+    raw = _read_raw()
+    raw['tray_intro_seen'] = bool(value)
+    _write_raw(raw)
+
+
+def should_start_hidden() -> bool:
+    return get_start_minimized() and get_minimize_to_tray() and get_tray_intro_seen()
 
 
 def set_start_minimized(value: bool) -> None:

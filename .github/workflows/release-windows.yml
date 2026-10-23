@@ -1,8 +1,7 @@
 name: Build Windows portable release
 
 on:
-  release:
-    types: [published]
+  # Publishing a user-tested local ZIP must not rebuild or replace that ZIP.
   workflow_dispatch:
     inputs:
       release_tag:
@@ -43,7 +42,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: >-
-          python -m unittest tests.windowed_startup_test tests.branding_test tests.audio_sync_test
+          python -m unittest tests.tray_activation_test tests.windowed_startup_test tests.branding_test tests.audio_sync_test
           tests.camera_drag_test tests.camera_preview_test tests.camera_window_test
           tests.footer_account_test tests.grid_width_test tests.room_tabs_test
           tests.theme_color_test tests.tray_position_test tests.tray_room_filter_test
@@ -52,6 +51,15 @@ jobs:
         run: python tools/build_portable.py --with-camera
       - name: Validate relocated executable without Python on PATH
         run: python tools/test_portable.py
+      - name: Validate full-directory overwrite upgrade from v1.0.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download v1.0.1 --repo "$env:GITHUB_REPOSITORY" --pattern MijiaDeck-v1.0.1-windows-x64.zip --dir build/previous
+          if ($LASTEXITCODE -ne 0) { throw "Previous release download failed" }
+          python tools/test_portable.py --previous-zip build/previous/MijiaDeck-v1.0.1-windows-x64.zip
+          if ($LASTEXITCODE -ne 0) { throw "Overwrite upgrade validation failed" }
       - name: Retain build and check artifacts
         uses: actions/upload-artifact@v4
         with:

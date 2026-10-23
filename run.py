@@ -163,27 +163,35 @@ def main(startup_check=None) -> int:
     except Exception:
         pass
 
-    from app.core.settings_store import get_start_minimized, get_minimize_to_tray
+    from app.core.settings_store import should_start_hidden
     # 以托盘方式静默启动：完全不显示主窗口（设备列表在后台加载，
     # 卡片网格延迟到首次唤出才构建，常驻内存显著更低）。曾用
     # 「透明 show 再隐藏」初始化原生窗口，但那会连带构建整页卡片
-    _start_hidden = get_start_minimized() and get_minimize_to_tray()
+    _start_hidden = should_start_hidden()
     if not _start_hidden:
         window.show()
     # 登录检查放在 show 之后发起：回调经队列信号回到主线程，
     # 先启动事件循环可保证首次回调不被阻塞在窗口绘制之前
-    window.start()
+    def begin():
+        window.start()
+        if _start_hidden:
+            from app import trim_working_set
+            QTimer.singleShot(500, trim_working_set)
+
+    if startup_check is None:
+        from app.ui.tray_intro import start_with_tray_intro
+        start_with_tray_intro(window, begin)
+    else:
+        begin()
     if startup_check is not None:
         QTimer.singleShot(500, lambda: startup_check(app, window))
-    if _start_hidden:
-        # 事件循环转起来、后台加载完成后修剪工作集
-        from app import trim_working_set
-
-        QTimer.singleShot(500, trim_working_set)
     return app.exec()
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-login':
+        from app.package_check import check_login
+        raise SystemExit(check_login(sys.argv[2]))
     if len(sys.argv) == 3 and sys.argv[1] == '--check-startup':
         from app.package_check import check_startup
         raise SystemExit(check_startup(main, sys.argv[2]))
