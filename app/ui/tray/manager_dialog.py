@@ -20,6 +20,7 @@ import qtawesome as qta
 
 from app.core import settings_store, tray_store
 from app.core.models import DeviceInfo, SceneInfo
+from app.core.device_controls import device_title, tray_eligible
 from app.ui.overlay_dialog import OverlayDialog
 from app.ui.si_theme import SiColors
 from app.ui.tray.draggable_row import _DraggableRow
@@ -34,6 +35,7 @@ class TrayManagerDialog(OverlayDialog):
         # 与设备详情/添加抽屉同款观感：无边框圆角面板；
         # 但面板铺满窗口并带可拖拽标题栏，保持可移动性，无遮罩
         super().__init__(parent, overlay=False)
+        devices = [device for device in devices if tray_eligible(device)]
         self.setWindowTitle("编辑卡片")
         self._drag_did: str | None = None
         self.setAcceptDrops(True)
@@ -202,7 +204,7 @@ class TrayManagerDialog(OverlayDialog):
             row.setStyleSheet(self._row_style())
             rl = QHBoxLayout(row)
             rl.setContentsMargins(10, 8, 16, 8)
-            name = QLabel(f"{dev.name}  ·  {dev.room_name}")
+            name = QLabel(f"{device_title(dev)}  ·  {dev.room_name}")
             name.setStyleSheet(f"color: {SiColors.TEXT_PRIMARY if dev.online else f'{SiColors.OFFLINE_TEXT}'}; background: transparent;")
             rl.addWidget(name, stretch=1)
             btn = QPushButton("✓" if dev.did in selected else "+")
@@ -403,7 +405,7 @@ class TrayManagerDialog(OverlayDialog):
             dev = dev_map.get(item["id"])
             if dev is None:
                 return None
-            text = f"{dev.name}  ·  {dev.room_name}"
+            text = f"{device_title(dev)}  ·  {dev.room_name}"
             color = SiColors.TEXT_PRIMARY if dev.online else SiColors.OFFLINE_TEXT
         else:
             # 最新场景名优先，未加载时回退已存快照（快照保证离线可显示）

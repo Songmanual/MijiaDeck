@@ -3,9 +3,8 @@
 # Copyright (C) 2026 MiHome-Windows contributors
 """米家风格的设备卡片。
 
-卡片承担两级操作：右侧圆形电源钮直接开关（快速路径），点击卡片本体
-打开详情面板（完整控制）。布局为纯文字：左侧设备名与副标题（房间，
-可附带温湿度读数），右侧垂直居中的电源钮，无装饰图标。
+卡片按设备角色提供常用操作：圆形电源钮直接开关，面板本体只展示；
+调光调色灯点击打开小控制窗，其他设备使用各自的详情路径。
 
 设备是否支持开关在列表接口里拿不到：电源钮初始隐藏，后台批量探测
 确认有可写开关属性后才显示并回填真实状态。
@@ -24,6 +23,8 @@ from PySide6.QtWidgets import (
 from app.siui.components.container import SiRowCard
 
 from app.core.models import DeviceInfo
+from app.core.device_controls import device_title, device_subtitle, has_device_details, supports_card_power, is_camera
+from app.ui.camera_play_button import CameraPlayButton
 from app.ui.power_button import PowerButton
 from app.ui.si_theme import SiColors
 import qtawesome as qta
@@ -48,6 +49,8 @@ class DeviceCard(SiRowCard):
         self._busy = False
         self._hovered = False
         self._online = device.online
+        self._metrics_text = None
+        self._panel_states = {}
 
         self.style_data.background_color = QColor(
             SiColors.OFFLINE_CARD if not self._online else SiColors.CARD)
@@ -55,7 +58,7 @@ class DeviceCard(SiRowCard):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         # 初始基准尺寸；主窗口按实际网格宽度分配最终列宽。
         self.setFixedSize(_CARD_FIXED_WIDTH, _CARD_FIXED_HEIGHT)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.PointingHandCursor if has_device_details(device) else Qt.ArrowCursor)
         self.muteStretchWidget()
 
         self._power_btn = PowerButton(_POWER_BTN_SIZE, icon_size=22)
@@ -66,9 +69,9 @@ class DeviceCard(SiRowCard):
         self._power_btn.set_online(self._online)
 
         name_color = SiColors.INFO_TEXT if self._online else SiColors.OFFLINE_TEXT
-        self._name_label = QLabel(device.name)
+        self._name_label = QLabel(device_title(device))
         self._name_label.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.Medium))
-        self._name_label.setToolTip(device.name)
+        self._name_label.setAccessibleName(device.name)
         self._name_label.setMinimumWidth(0)
         self._name_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         # 允许换行：长名称不再把所在列撑宽，卡片宽度保持整齐
@@ -78,6 +81,7 @@ class DeviceCard(SiRowCard):
 
         self._sub_label = QLabel(self._sub_text())
         self._sub_label.setFont(QFont("Microsoft YaHei UI", 8))
+        self._sub_label.setWordWrap(True)
         self._sub_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         sub_color = SiColors.TEXT_SECONDARY if self._online else SiColors.OFFLINE_SUB
         self._sub_label.setStyleSheet(
@@ -122,13 +126,21 @@ class DeviceCard(SiRowCard):
         lay.addSpacing(7)
         lay.addWidget(text_col, stretch=1)
         lay.addWidget(self._power_btn, alignment=Qt.AlignVCenter)
+        self._play_btn = None
+        if is_camera(device):
+            self._play_btn = CameraPlayButton(_POWER_BTN_SIZE, online=self._online)
+            self._play_btn.clicked.connect(lambda: self.open_requested.emit(device.did))
+            lay.addWidget(self._play_btn, alignment=Qt.AlignVCenter)
+            from app.ui.tray.camera_corner_tag import CameraCornerTag
+            self._camera_tag = CameraCornerTag(self, corner_radius=14, width=46, height=14, font_size=6)
+            self._camera_tag.raise_()
 
     def paintEvent(self, event) -> None:  # noqa: N802
         """A fine outline keeps the cards legible on the quiet page background."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(self.style_data.background_color)
-        border = SiColors.CARD_BORDER_HOVER if self._hovered and self._online else SiColors.LINE
+        border = SiColors.CARD_BORDER_HOVER if self._hovered and self._online and has_device_details(self.device) else SiColors.LINE
         painter.setPen(QPen(QColor(border), 1))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 14, 14)
         painter.end()
@@ -148,25 +160,29 @@ class DeviceCard(SiRowCard):
         self._icon_label.show()
 
     def set_power_state(self, state: bool) -> None:
+        if not supports_card_power(self.device):
+            self._power_btn.hide()
+            return
         # 能设置状态即证明设备具备开关能力，电源钮随之可见
         self._power_btn.set_state(state)
         self._power_btn.show()
 
     def _sub_text(self, metrics: str | None = None) -> str:
         """副标题文案：离线优先显示离线标记，有读数时附带。"""
-        base = self.device.room_name
-        if not self._online:
-            return f"{base} · 离线"
-        if metrics:
-            return f"{base} | {metrics}"
-        return base
+        return device_subtitle(self.device, metrics, self._panel_states)
 
     def set_metrics(self, text: str | None) -> None:
         """副标题附带实时读数（温湿度等），离线卡片不叠加读数。"""
         # 离线设备不展示温湿度，读数可能是旧缓存
         if not self._online:
             return
+        self._metrics_text = text
         self._sub_label.setText(self._sub_text(text))
+
+    def set_panel_states(self, states):
+        if self.device.switch_channels:
+            self._panel_states = dict(states)
+            self._sub_label.setText(self._sub_text(self._metrics_text))
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -190,7 +206,7 @@ class DeviceCard(SiRowCard):
             self.style_data.background_color = QColor(SiColors.OFFLINE_CARD)
         else:
             self.style_data.background_color = QColor(
-                SiColors.CARD_HOVER if self._hovered else SiColors.CARD
+                SiColors.CARD_HOVER if self._hovered and has_device_details(self.device) else SiColors.CARD
             )
         self.update()
 
@@ -198,7 +214,7 @@ class DeviceCard(SiRowCard):
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 (Qt 命名约定)
         # 电源钮自己消费点击事件，能走到这里的都是卡片空白区
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and has_device_details(self.device) and self._online:
             self.open_requested.emit(self.device.did)
         super().mouseReleaseEvent(event)
 

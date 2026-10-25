@@ -167,7 +167,7 @@ def main(startup_check=None) -> int:
     # 以托盘方式静默启动：完全不显示主窗口（设备列表在后台加载，
     # 卡片网格延迟到首次唤出才构建，常驻内存显著更低）。曾用
     # 「透明 show 再隐藏」初始化原生窗口，但那会连带构建整页卡片
-    _start_hidden = should_start_hidden()
+    _start_hidden = should_start_hidden() and '--show-main' not in sys.argv
     if not _start_hidden:
         window.show()
     # 登录检查放在 show 之后发起：回调经队列信号回到主线程，

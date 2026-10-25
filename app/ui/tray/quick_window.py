@@ -1,15 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # MiHome-Windows: 米家设备的 Windows 桌面控制端
 # Copyright (C) 2026 MiHome-Windows contributors
-"""托盘左键快捷窗口：设备/场景行、音频栏、小爱语音条与呼出动画。"""
+"""托盘左键快捷窗口：设备/场景行、音频栏、小爱语音条。"""
 
 from PySide6.QtCore import (
-    QEasingCurve,
     QEvent,
     QPoint,
     QRectF,
-    QParallelAnimationGroup,
-    QPropertyAnimation,
     QSize,
     Qt,
     QTimer,
@@ -37,6 +34,8 @@ import qtawesome as qta
 from app.core import settings_store, tray_store
 from app.core.jobs import JobExecutor
 from app.core.models import DeviceInfo, SceneInfo, is_speaker
+from app.core.device_controls import device_title, device_subtitle, has_device_details, supports_card_power, tray_eligible, is_camera as is_camera_device
+from app.ui.camera_play_button import CameraPlayButton
 from app.core.service import MijiaService
 from app.ui.power_button import PowerButton
 from app.ui.si_theme import SiColors
@@ -80,6 +79,7 @@ class TrayQuickWindow(QDialog):
         self._service = service
         self._jobs = jobs
         self._devices: list[DeviceInfo] = []
+        self._access_state = 'ready'
         self._known_power: dict[str, bool | None] = {}
         self._metrics: dict[str, str | None] = {}
         self._sub_labels: dict[str, QLabel] = {}
@@ -169,10 +169,19 @@ class TrayQuickWindow(QDialog):
         lay.addWidget(self._scroll, stretch=1)
 
         self._empty = QLabel("暂无卡片\n点击右上角编辑图标添加")
+        self._empty.setFont(QFont('Microsoft YaHei UI', 9))
+        self._empty.setWordWrap(True)
         self._empty.setAlignment(Qt.AlignCenter)
         self._empty.setStyleSheet(f"color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 9pt;")
         self._empty.hide()
         lay.addWidget(self._empty)
+        self._speaker_hint = QLabel()
+        self._speaker_hint.setFont(QFont('Microsoft YaHei UI', 9))
+        self._speaker_hint.setWordWrap(True)
+        self._speaker_hint.setAlignment(Qt.AlignCenter)
+        self._speaker_hint.setStyleSheet(f'color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 9pt;')
+        self._speaker_hint.hide()
+        lay.addWidget(self._speaker_hint)
 
         # 底部小爱输入条：有小爱音箱才显示，复用主页悬浮球同款交互
         self._voice_frame = QFrame()
@@ -247,10 +256,8 @@ class TrayQuickWindow(QDialog):
         # 场景与统一顺序缓存：呼出时从 tray_store 刷新（见 _rebuild / show_near_tray）
         self._tray_scenes: list[dict] | None = None
         self._tray_order: list[dict] | None = None
-        # 呼出/隐藏动画与点击外部隐藏
+        # 弹窗位置与点击外部隐藏
         self._target_pos: QPoint | None = None
-        self._show_anim: QParallelAnimationGroup | None = None
-        self._hide_anim: QParallelAnimationGroup | None = None
         self._pointer_has_entered = False
         self._leave_timer = QTimer(self)
         self._leave_timer.setSingleShot(True)
@@ -283,23 +290,6 @@ class TrayQuickWindow(QDialog):
         handle.setAccessibleName('拖动调整浮窗位置')
         return handle
 
-    def is_animating(self) -> bool:
-        """呼出/隐藏动画是否正在进行。"""
-        return self._show_anim is not None or self._hide_anim is not None
-
-    def abort_toggle_animation(self) -> None:
-        """终止进行中的呼出/隐藏动画并复位透明度（托盘图标切换显隐用）。"""
-        for anim in (self._show_anim, self._hide_anim):
-            if anim is not None:
-                try:
-                    anim.stop()  # 中途停止不发 finished，须手动清理
-                except Exception:
-                    pass
-                anim.deleteLater()
-        self._show_anim = None
-        self._hide_anim = None
-        self.setWindowOpacity(1.0)
-
     def is_explicitly_visible(self) -> bool:
         """显式呼出状态（Tool 窗口失焦时 isVisible 会误报 False）。"""
         return self._tray_visible
@@ -321,7 +311,7 @@ class TrayQuickWindow(QDialog):
 
     def set_devices(self, devices: list[DeviceInfo], known_power: dict[str, bool | None]) -> None:
         """由主窗口在设备列表刷新后调用，传入全量设备与开关记忆。"""
-        self._devices = list(devices)
+        self._devices = [d for d in devices if tray_eligible(d)]
         self._known_power = dict(known_power)
         self._tray_dids = tray_store.load()
         self._tray_scenes = tray_store.load_scenes()
@@ -331,6 +321,13 @@ class TrayQuickWindow(QDialog):
         if self.isVisible():
             self._rebuild()
             # 不再 adjustSize——它会按 sizeHint 漏算语音条/音频栏，导致窗口逐次缩短
+
+    def set_access_state(self, state):
+        self._access_state = state
+        self._drag_header.setVisible(state == 'ready')
+        self._update_audio_bar()
+        self._update_voice_bar()
+        self._rebuild()
 
     def set_metrics(self, metrics: dict[str, str | None]) -> None:
         """主窗口温湿度读数同步：更新内存并就地刷新可见行副标题。"""
@@ -348,14 +345,16 @@ class TrayQuickWindow(QDialog):
             dev = next((d for d in self._devices if d.did == did), None)
             if dev is None:
                 continue
-            if dev.online:
-                sub_text = f"{dev.room_name} | {text}" if text else dev.room_name
-            else:
-                sub_text = f"{dev.room_name} · 离线"
+            sub_text = device_subtitle(dev, text, self._known_power)
             self._set_elided(sub, sub_text, self._sub_widths.get(did))
 
     def _update_voice_bar(self) -> None:
-        has_speaker = any(is_speaker(d) and d.online for d in self._devices)
+        from app.core.availability import speaker_hint
+        ready = self._access_state == 'ready'
+        has_speaker = ready and any(is_speaker(d) and d.online for d in self._devices)
+        hint = speaker_hint(self._devices) if ready else ''
+        self._speaker_hint.setText(hint)
+        self._speaker_hint.setVisible(bool(hint))
         was_visible = self._voice_frame.isVisible()
         self._voice_frame.setVisible(has_speaker)
         if has_speaker and self.isVisible():
@@ -370,6 +369,8 @@ class TrayQuickWindow(QDialog):
 
     def _pick_speaker(self) -> DeviceInfo | None:
         """输出音箱：设置的默认音箱（在线时）优先，否则第一个在线音箱。"""
+        if self._access_state != 'ready':
+            return None
         pref = settings_store.get_default_speaker_did()
         if pref:
             for d in self._devices:
@@ -431,6 +432,11 @@ class TrayQuickWindow(QDialog):
         # 确定性计算窗口高度，不依赖 adjustSize（隐藏态会漏算语音条/音频栏）：
         # 由各固定子控件高度累加，显隐结果一致，呼出前即可得到正确尺寸避免闪烁；
         # 已显示时外扩并保持底部贴边，避免语音/音频栏显隐挤压卡片
+        if self._access_state != 'ready':
+            self.setMinimumHeight(140 + 2 * _SHADOW_PAD)
+            self.resize(self.width(), 140 + 2 * _SHADOW_PAD)
+            return
+        self.setMinimumHeight(280 + 2 * _SHADOW_PAD)
         self._separator.setVisible(not self._audio_bar.isHidden())
         self._root.layout().setContentsMargins(12, 4 if not self._audio_bar.isHidden() else 8, 12, 10)
         audio_h = 0
@@ -441,7 +447,7 @@ class TrayQuickWindow(QDialog):
         # 根面板：标题 + 固定列表区域 + 内容边距和间距
         root_margins = self._root.layout().contentsMargins()
         root_h = 26 + _LIST_HEIGHT + root_margins.top() + root_margins.bottom() + 16
-        h = audio_h + root_h + voice_h + 2 * _SHADOW_PAD
+        h = audio_h + root_h + voice_h + (36 if not self._speaker_hint.isHidden() else 0) + 2 * _SHADOW_PAD
         from PySide6.QtGui import QGuiApplication
         screen = QGuiApplication.primaryScreen()
         if screen is not None:
@@ -514,8 +520,6 @@ class TrayQuickWindow(QDialog):
                 from PySide6.QtGui import QGuiApplication
                 delta = event.globalPosition().toPoint() - self._drag_start_global
                 if self._dragging or delta.manhattanLength() >= QApplication.startDragDistance():
-                    if not self._dragging:
-                        self.abort_toggle_animation()
                     self._dragging = True
                     screen = QGuiApplication.screenAt(event.globalPosition().toPoint()) or self.screen()
                     self.move(self._clamp_position(self._drag_start_pos + delta, screen))
@@ -538,9 +542,6 @@ class TrayQuickWindow(QDialog):
         # 判断窗口外会与呼出竞态，造成"开了又关/闪烁"
         et = event.type()
         if et in (QEvent.WindowDeactivate, QEvent.ApplicationDeactivate):
-            # 呼出动画期间不隐藏，等动画完成再评估
-            if self._show_anim is not None:
-                return super().eventFilter(obj, event)
             if not self.underMouse():
                 QTimer.singleShot(20, self._maybe_hide_on_deactivate)
             return super().eventFilter(obj, event)
@@ -549,7 +550,7 @@ class TrayQuickWindow(QDialog):
     def _maybe_hide_on_deactivate(self) -> None:
         import shiboken6
 
-        if not shiboken6.isValid(self) or not self.isVisible() or self._show_anim is not None or self._dragging:
+        if not shiboken6.isValid(self) or not self.isVisible() or self._dragging:
             return
         # 只有真正失活且鼠标不在托盘窗口内才隐藏
         if self.isActiveWindow() or self.underMouse():
@@ -567,7 +568,7 @@ class TrayQuickWindow(QDialog):
             if not self._leave_timer.isActive():
                 self._leave_timer.start()
             return
-        self.hide_animated()
+        self.hide()
 
     def enterEvent(self, event) -> None:  # noqa: N802
         self._pointer_has_entered = True
@@ -591,7 +592,7 @@ class TrayQuickWindow(QDialog):
         if QApplication.mouseButtons() != Qt.NoButton:
             self._leave_timer.start()
             return
-        self.hide_animated()
+        self.hide()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
@@ -647,6 +648,11 @@ class TrayQuickWindow(QDialog):
             return
         for did, st in states.items():
             self._known_power[did] = st
+        for dev in self._devices:
+            if dev.switch_channels and dev.did in self._sub_labels:
+                self._set_elided(self._sub_labels[dev.did],
+                    device_subtitle(dev, self._metrics.get(dev.did), self._known_power),
+                    self._sub_widths.get(dev.did))
         # 遍历 QGridLayout 直接子项
         grid = getattr(self, "_grid", None)
         if grid is None:
@@ -662,6 +668,13 @@ class TrayQuickWindow(QDialog):
 
     def _rebuild(self) -> None:
         self._destroy_grid()
+        if self._access_state != 'ready':
+            from app.core.availability import MESSAGES
+            self._empty.setText(MESSAGES[self._access_state])
+            self._empty.show()
+            self._scroll.hide()
+            return
+        self._empty.setText('暂无卡片\n点击右上角编辑图标添加')
         dids = getattr(self, "_tray_dids", None)
         if dids is None:
             dids = self._tray_dids = tray_store.load()
@@ -714,6 +727,10 @@ class TrayQuickWindow(QDialog):
         self._list_lay.addLayout(self._grid)
         self._list_lay.addStretch(1)
         online_dids = [d for d in dids if lookup.get(d) and lookup[d].online and self._known_power.get(d) is None]
+        online_dids += [child for d in dids if lookup.get(d) and lookup[d].online
+                        for child in lookup[d].switch_channels
+                        if lookup.get(child) and lookup[child].online]
+        online_dids = list(dict.fromkeys(online_dids))
         if online_dids:
             self.refresh_power(online_dids)
 
@@ -761,8 +778,8 @@ class TrayQuickWindow(QDialog):
         if width is None:
             label.setText(text)
         else:
-            label.setText(label.fontMetrics().elidedText(
-                text, Qt.ElideRight, width))
+            label.setText('\n'.join(label.fontMetrics().elidedText(
+                line, Qt.ElideRight, width) for line in text.split('\n')))
         label.setToolTip("")
 
     def _make_row(self, dev: DeviceInfo) -> QFrame:
@@ -785,9 +802,9 @@ class TrayQuickWindow(QDialog):
             f"background: {SiColors.ONLINE if dev.online else SiColors.OFFLINE_SUB}; border-radius: 3px;")
         lay.addWidget(status)
 
-        known = self._known_power.get(dev.did)
-        avail = self._card_text_width(known is not None)
-        is_camera = '.camera.' in dev.model
+        known = self._known_power.get(dev.did) if supports_card_power(dev) else None
+        is_camera = is_camera_device(dev)
+        avail = self._card_text_width(known is not None or is_camera)
 
         text_col = QVBoxLayout()
         if is_camera:
@@ -799,13 +816,10 @@ class TrayQuickWindow(QDialog):
         # 水平 Ignored：布局可无限压缩标签，文本绝不可能把列撑宽
         # （setMinimumWidth(0) 无效——qSmartMinSize 只认 >0 的显式最小宽）
         name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self._set_elided(name, dev.name, avail)
+        self._set_elided(name, device_title(dev), avail)
         # 副标题：在线仅显示房间（+温湿度），离线才追加“· 离线”
         metrics = self._metrics.get(dev.did)
-        if dev.online:
-            sub_text = f"{dev.room_name} | {metrics}" if metrics else dev.room_name
-        else:
-            sub_text = f"{dev.room_name} · 离线"
+        sub_text = device_subtitle(dev, metrics, self._known_power)
         sub = QLabel()
         # setFont 提供与渲染一致的 fontMetrics；但应用级 QSS `*{font-size:10pt}`
         # 会盖掉 setFont，故样式表里也要写 8pt，两者缺一度量与渲染就不一致
@@ -834,17 +848,25 @@ class TrayQuickWindow(QDialog):
             lay.addWidget(btn)
         row._did = dev.did  # type: ignore[attr-defined]
         row._power_btn = btn  # type: ignore[attr-defined]
+        row._play_btn = None
         if is_camera:
+            row._play_btn = CameraPlayButton(28, 26, online=dev.online)
+            row._play_btn.clicked.connect(lambda _, d=dev.did: self.open_device_requested.emit(d))
+            lay.addWidget(row._play_btn)
             from app.ui.tray.camera_corner_tag import CameraCornerTag
             tag = CameraCornerTag(row)
             tag.raise_()
 
-        row.mousePressEvent = lambda e, d=dev.did: self.open_device_requested.emit(d) if e.button() == Qt.LeftButton else None
-        row.setCursor(Qt.PointingHandCursor)
+        if has_device_details(dev) and dev.online:
+            row.mousePressEvent = lambda e, d=dev.did: self.open_device_requested.emit(d) if e.button() == Qt.LeftButton else None
+            row.setCursor(Qt.PointingHandCursor)
+        else:
+            row.setCursor(Qt.ArrowCursor)
         return row
 
     def _on_toggle_done(self, did: str, ns: bool, btn) -> None:
         self._known_power[did] = ns
+        self._apply_power({did: ns})
         btn.set_state(ns)
         btn.set_busy(False)
 
@@ -939,6 +961,10 @@ class TrayQuickWindow(QDialog):
 
     def show_near_tray(self) -> None:
         """在托盘附近或屏幕右下角显示，显示前重建以保证与托盘存储一致。"""
+        if self._access_state != 'ready':
+            self.set_access_state(self._access_state)
+            self._show_immediately()
+            return
         self._tray_dids = tray_store.load()
         self._tray_scenes = tray_store.load_scenes()
         self._tray_order = tray_store.load_order()
@@ -958,61 +984,20 @@ class TrayQuickWindow(QDialog):
         except Exception:
             pass
         # 先显示并同步高度，再计算弹出位置，避免首帧用未校正高度导致压住任务栏
-        self._play_show_animation()
+        self._show_immediately()
 
-    def _play_show_animation(self) -> None:
-        # 若正在隐藏，先停掉
-        if self._hide_anim is not None:
-            try:
-                self._hide_anim.stop()  # 中途停止不发 finished，须手动清理
-            except Exception:
-                pass
-            self._hide_anim.deleteLater()
-            self._hide_anim = None
-        if self._show_anim is not None:
-            try:
-                self._show_anim.stop()
-            except Exception:
-                pass
-            self._show_anim.deleteLater()
-            self._show_anim = None
-        # 呼出前先同步高度（隐藏态确定性计算），保证窗口尺寸在显示前即正确，
-        # 避免显示后再 resize 造成闪烁
+    def _show_immediately(self) -> None:
+        # Set final size and position before showing, with no translucent frame.
         self._sync_tray_height()
-        target = self._popup_position()
-        self._target_pos = target
+        self._target_pos = self._popup_position()
         self._pointer_has_entered = False
         self._leave_timer.stop()
         self._leave_timer.setInterval(3000)
-        # 动画起点：目标下方 4px + 透明 0，全部在隐藏态摆好，只 show 一次
-        start = QPoint(target.x(), target.y() + 4)
-        self.move(start)
-        self.setWindowOpacity(0.0)
+        self.move(self._target_pos)
         self._tray_visible = True
         self.show()
         self.raise_()
         self.activateWindow()
-        group = QParallelAnimationGroup(self)
-        pos_anim = QPropertyAnimation(self, b"pos", group)
-        pos_anim.setStartValue(start)
-        pos_anim.setEndValue(target)
-        pos_anim.setDuration(180)
-        pos_anim.setEasingCurve(QEasingCurve.OutCubic)
-        op_anim = QPropertyAnimation(self, b"windowOpacity", group)
-        op_anim.setStartValue(0.0)
-        op_anim.setEndValue(1.0)
-        op_anim.setDuration(180)
-        op_anim.setEasingCurve(QEasingCurve.InOutQuad)
-        group.addAnimation(pos_anim)
-        group.addAnimation(op_anim)
-        self._show_anim = group
-        # 自然结束时清理；被打断的组在各 stop 处手动 deleteLater，
-        # 否则旧组随每次显隐在窗口下不断堆积
-        group.finished.connect(lambda: (
-            setattr(self, "_show_anim", None),
-            group.deleteLater(),
-        ))
-        group.start()
 
     def _clamp_position(self, point, screen):
         if screen is None:
@@ -1048,49 +1033,8 @@ class TrayQuickWindow(QDialog):
     def reset_position(self):
         settings_store.set_tray_position(None)
         if self.isVisible():
-            self.abort_toggle_animation()
             self._target_pos = self._popup_position()
             self.move(self._target_pos)
-
-    def hide_animated(self) -> None:
-        """带动画隐藏；已隐藏或正隐藏则直接返回。"""
-        if not self.isVisible():
-            return
-        if self._hide_anim is not None:
-            return
-        if self._show_anim is not None:
-            try:
-                self._show_anim.stop()  # 中途停止不发 finished，须手动清理
-            except Exception:
-                pass
-            self._show_anim.deleteLater()
-            self._show_anim = None
-        start = self.pos()
-        end = QPoint(start.x(), start.y() + 4)
-        group = QParallelAnimationGroup(self)
-        pos_anim = QPropertyAnimation(self, b"pos", group)
-        pos_anim.setStartValue(start)
-        pos_anim.setEndValue(end)
-        pos_anim.setDuration(160)
-        pos_anim.setEasingCurve(QEasingCurve.InCubic)
-        op_anim = QPropertyAnimation(self, b"windowOpacity", group)
-        op_anim.setStartValue(self.windowOpacity() if self.windowOpacity() > 0 else 1.0)
-        op_anim.setEndValue(0.0)
-        op_anim.setDuration(160)
-        op_anim.setEasingCurve(QEasingCurve.InOutQuad)
-        group.addAnimation(pos_anim)
-        group.addAnimation(op_anim)
-
-        def _on_finished():
-            self._hide_anim = None
-            group.deleteLater()
-            self.setWindowOpacity(1.0)
-            # 避免递归触发 hideEvent 中的动画
-            self.hide()
-
-        group.finished.connect(_on_finished)
-        self._hide_anim = group
-        group.start()
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         super().focusOutEvent(event)
@@ -1103,7 +1047,7 @@ class TrayQuickWindow(QDialog):
             return
         # 失焦触发：与 deactivate 同一套排除逻辑，避免管理对话框/详情
         # 等本应用窗口打开时误隐藏托盘
-        if self._show_anim is not None or self._dragging or self.isActiveWindow() or self.underMouse():
+        if self._dragging or self.isActiveWindow() or self.underMouse():
             return
         from PySide6.QtWidgets import QApplication
         active = QApplication.activeWindow()
@@ -1115,7 +1059,7 @@ class TrayQuickWindow(QDialog):
             if not self._leave_timer.isActive():
                 self._leave_timer.start()
             return
-        self.hide_animated()
+        self.hide()
 
 
 

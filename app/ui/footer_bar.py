@@ -2,7 +2,7 @@
 """Version, transient loading status and account actions in one fixed footer."""
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QProgressBar
 from app import __version__
 from app.ui.si_theme import SiColors
 
@@ -18,6 +18,8 @@ class FooterBar(QFrame):
         self.setFixedHeight(height)
         self._release = None
         self._status_text = ''
+        self._progress_value = None
+        self._progress_text = ''
         layout = QHBoxLayout(self)
         # Compensate the font's lower ink centre while keeping the controls
         # vertically centred (about 2 physical pixels at 200% scaling).
@@ -25,12 +27,18 @@ class FooterBar(QFrame):
         layout.setSpacing(12)
         layout.setAlignment(Qt.AlignVCenter)
         self.version = QPushButton(f'当前版本号:v{__version__}')
-        self.version.setToolTip('检查新版本')
+        self.version.setAccessibleName('检查新版本')
         self.version.clicked.connect(self.check_requested)
         layout.addWidget(self.version)
         self.update_button = QPushButton()
         self.update_button.clicked.connect(self.update_requested)
         layout.addWidget(self.update_button)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedSize(112, 4)
+        self.progress.setAccessibleName('设备加载进度')
+        layout.addWidget(self.progress)
         self.status = QLabel()
         layout.addWidget(self.status)
         layout.addStretch(1)
@@ -44,10 +52,24 @@ class FooterBar(QFrame):
 
     def set_status(self, text):
         self._status_text = text
+        self._sync_status()
+
+    def set_progress(self, value, text=''):
+        self._progress_value = value
+        self._progress_text = text
+        if value is not None:
+            self.progress.setValue(value)
+            self.progress.setAccessibleDescription(text)
+        self._sync_status()
+
+    def _sync_status(self):
+        loading = self._progress_value is not None
+        text = self._progress_text if loading else self._status_text
         self.status.setText(text)
         self.status.setVisible(bool(text))
-        self.version.setVisible(not text)
-        self.update_button.setVisible(not text and self._release is not None)
+        self.progress.setVisible(loading)
+        self.version.setVisible(not text and not loading)
+        self.update_button.setVisible(not text and not loading and self._release is not None)
 
     def set_release(self, info):
         self._release = info
@@ -66,5 +88,7 @@ class FooterBar(QFrame):
             f'QPushButton {{ color: {SiColors.TEXT_SECONDARY}; background: transparent;'
             f' border: none; padding: 2px 0; font-size: 8pt; }}'
             f'QPushButton:hover {{ color: {SiColors.THEME}; }}'
-            f'QLabel {{ color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 8pt; }}')
+            f'QLabel {{ color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 8pt; }}'
+            f'QProgressBar {{ background: {SiColors.LINE}; border: none; border-radius: 2px; }}'
+            f'QProgressBar::chunk {{ background: {SiColors.THEME}; border-radius: 2px; }}')
         self.update_button.setStyleSheet(f'color: {SiColors.THEME}; font-size: 8pt;')

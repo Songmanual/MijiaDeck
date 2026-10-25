@@ -3,6 +3,7 @@
 import hashlib
 import importlib.metadata
 import json
+import os
 import shutil
 import struct
 import subprocess
@@ -159,7 +160,9 @@ def main():
         'camera_backend_included': with_camera,
         'camera_source_commit': '2cc9d9e7607014d1d05c17bc5676544fbb0d5d24' if with_camera else None,
         'camera_upstream_license': 'not confirmed' if with_camera else None,
-        'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'source_commit': os.environ.get('MIJIADECK_SOURCE_COMMIT') or subprocess.check_output(
+            ['git', '-c', 'safe.directory=' + ROOT.as_posix(), 'rev-parse', 'HEAD'],
+            cwd=ROOT, text=True).strip(),
     }, ensure_ascii=False, indent=2), encoding='utf-8')
     forbidden = {'auth.json', 'settings.json', 'tray.json', 'workbench.json',
                  'devices_cache.json', 'account_profiles.json', 'device_icons.json'}

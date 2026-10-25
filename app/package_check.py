@@ -92,6 +92,7 @@ def check_startup(entrypoint, report_path):
             stack.enter_context(patch('app.core._json_store.data_dir', return_value=Path(folder)))
             stack.enter_context(patch.object(main_window, 'MijiaService', return_value=Mock()))
             stack.enter_context(patch.object(main_window, 'JobExecutor', OfflineJobs))
+            stack.enter_context(patch('app.core.availability.NetworkMonitor.check_now'))
             settings_store.set_check_update_enabled(False)
             settings_store.set_start_minimized(False)
             entrypoint(ready)
@@ -120,6 +121,10 @@ def check_package(report_path: str) -> int:
         from app.ui.volume_slider import VolumeSlider
 
         application = QApplication.instance() or QApplication([])
+        from PySide6.QtNetwork import QNetworkInformation
+        if sys.platform == 'win32' and not QNetworkInformation.loadDefaultBackend():
+            raise RuntimeError('Windows network information backend is missing')
+        report['checks'].append('system-network-information')
         # Construct a real verified context, so missing auxiliary certificate
         # files fail offline before a release can reach the login screen.
         ssl.create_default_context(cafile=certifi.where())

@@ -7,7 +7,7 @@
 core.service 适配层，界面层永远只依赖这里的稳定类型。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -25,6 +25,9 @@ class DeviceInfo:
     room_name: str
     online: bool
     spec_type: str = ""
+    switch_channels: list[str] = field(default_factory=list)
+    light_features: list[str] = field(default_factory=list)
+    metric_features: list[str] | None = None  # None=unverified; []=no supported readout
 
 
 @dataclass

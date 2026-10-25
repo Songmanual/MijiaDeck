@@ -1,21 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # MiHome-Windows: 米家设备的 Windows 桌面控制端
 # Copyright (C) 2026 MiHome-Windows contributors
-"""Device controls use an overlay; cameras have persistent, resizable windows."""
+"""Persistent, resizable camera preview windows; no generic device editor."""
 
 import ctypes
 import ctypes.wintypes as wintypes
 import sys
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtWidgets import QAbstractButton, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractButton, QVBoxLayout, QWidget
 from app import resource_path
 
 from app.core.jobs import JobExecutor
 from app.core.models import DeviceInfo
 from app.core.service import MijiaService
 from app.ui.overlay_dialog import OverlayDialog
-from app.ui.workbench_panel import WorkbenchPanel
 from app.ui.window_caption import WindowCaption, RESIZE_MARGIN
 from app.ui.si_theme import SiColors
 
@@ -23,7 +22,10 @@ from app.ui.si_theme import SiColors
 class DeviceDetailDialog(OverlayDialog):
     def __init__(self, service: MijiaService, jobs: JobExecutor,
                  device: DeviceInfo, parent=None):
-        camera_window = '.camera.' in device.model
+        from app.core.device_controls import is_camera
+        if not is_camera(device):
+            raise ValueError('Only cameras use this preview window')
+        camera_window = True
         super().__init__(None if camera_window else parent, overlay=not camera_window,
                          modal=Qt.NonModal if camera_window else Qt.WindowModal)
         self.device = device
@@ -57,13 +59,6 @@ class DeviceDetailDialog(OverlayDialog):
             outer.addWidget(body, stretch=1)
             self._workbench = self._camera
             self._style_camera_frame()
-        else:
-            header = QHBoxLayout()
-            header.addStretch(1)
-            header.addWidget(self._make_close_button())
-            outer.addLayout(header)
-            self._workbench = WorkbenchPanel(service, jobs, self._panel)
-            outer.addWidget(self._workbench, stretch=1)
 
     @property
     def panel(self):
@@ -72,8 +67,6 @@ class DeviceDetailDialog(OverlayDialog):
     def load(self) -> None:
         if self._camera is not None:
             self._camera.load()
-        else:
-            self._workbench.show_device(self.device.did, online=self.device.online, device=self.device)
 
     def done(self, result) -> None:
         if self._camera is not None:

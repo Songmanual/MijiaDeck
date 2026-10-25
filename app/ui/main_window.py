@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QEvent, QPropertyAnimation, QPoint, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QPropertyAnimation, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QGraphicsDropShadowEffect
 from PySide6.QtGui import QAction, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -40,10 +41,11 @@ from app.core import cache as device_cache
 from app.core import icon_store
 from app.core.jobs import JobExecutor
 from app.core.models import DeviceInfo, SceneInfo, is_speaker
+from app.core.device_controls import prepare_device_cards, has_device_details, is_light
 from app.core.service import MijiaService
 from app.ui.device_card import DeviceCard
 from app.ui.device_dialog import DeviceDetailDialog
-from app.ui.window_caption import WindowCaption, CAPTION_HEIGHT, RESIZE_MARGIN
+from app.ui.window_caption import WindowCaption, BRAND_CAPTION_HEIGHT, RESIZE_MARGIN
 from app.ui.scene_card import SceneCard
 from app.ui.si_theme import SiColors
 from app.ui.room_tabs import RoomTabStrip, RoomTab, build_room_menu
@@ -77,7 +79,7 @@ def _refresh_summary(total: int, added: int, removed: int) -> str:
 
 # 无边框窗口的边缘拖拽热区宽度（像素）
 _RESIZE_MARGIN = RESIZE_MARGIN
-_TITLE_BAR_HEIGHT = CAPTION_HEIGHT
+_TITLE_BAR_HEIGHT = BRAND_CAPTION_HEIGHT
 _GRID_SPACING = 8
 
 # Windows 原生窗口消息与命中测试代码
@@ -96,6 +98,7 @@ _HTBOTTOMRIGHT = 17
 
 
 class MainWindow(QMainWindow):
+    _loading_progress = Signal(int, int, str)
     def __init__(self):
         super().__init__()
         self._service = MijiaService()
@@ -126,8 +129,21 @@ class MainWindow(QMainWindow):
         self._metrics: dict[str, str | None] = {}
         # 刷新防重入：请求在途时忽略再次点击
         self._loading_devices = False
+        self._load_generation = 0
+        self._load_active = False
+        self._load_full_page = False
+        self._load_show_footer = False
+        self._load_value = 0
+        self._load_pending = set()
+        self._load_had_failure = False
         self._account_transition = False
-        self._logged_out = False
+        self._logged_out = True
+        self._login_dialog = None
+        from app.core.availability import NetworkMonitor
+        self._network_monitor = NetworkMonitor(self)
+        self._network_online = self._network_monitor.online
+        self._reconnecting = False
+        self._connection_failed = False
         # 启动自动检查更新每次进程只做一次，避免 start 被重复触发
         self._update_check_done = False
         # 轮询防重入：上一轮批量读取未返回时跳过本轮定时触发
@@ -216,7 +232,7 @@ class MainWindow(QMainWindow):
         self._home_btn.setObjectName("homeSwitcher")
         self._home_btn.setLayoutDirection(Qt.RightToLeft)
         self._home_btn.setIconSize(QSize(19, 19))
-        self._home_btn.setToolTip("切换家庭")
+        self._home_btn.setAccessibleName("切换家庭")
         self._home_btn.setCursor(Qt.PointingHandCursor)
         self._home_btn.clicked.connect(self._show_home_menu)
         top_bar.addWidget(self._home_btn)
@@ -252,14 +268,12 @@ class MainWindow(QMainWindow):
         self._refresh_btn.setIconSize(QSize(24, 24))
         self._refresh_btn.setFixedSize(38, 38)
         self._refresh_btn.setCursor(Qt.PointingHandCursor)
-        self._refresh_btn.setToolTip("刷新设备")
         self._refresh_btn.setAccessibleName("刷新设备")
-        self._refresh_btn.clicked.connect(self.load_devices)
+        self._refresh_btn.clicked.connect(lambda checked=False: self.load_devices(manual=True))
         self._refresh_spin = qta.Spin(self._refresh_btn, interval=16, step=6)
         self._more_btn = QPushButton()
         self._more_btn.setIconSize(QSize(24, 24))
         self._more_btn.setFixedSize(38, 38)
-        self._more_btn.setToolTip("设置与管理")
         self._more_btn.setAccessibleName("设置与管理")
         self._more_btn.setCursor(Qt.PointingHandCursor)
         self._more_btn.clicked.connect(self._show_more_menu)
@@ -284,7 +298,6 @@ class MainWindow(QMainWindow):
         self._room_menu_btn = QPushButton()
         self._room_menu_btn.setFixedSize(40, 52)
         self._room_menu_btn.setIconSize(QSize(24, 24))
-        self._room_menu_btn.setToolTip('房间列表与设备数量')
         self._room_menu_btn.setAccessibleName('房间列表与设备数量')
         self._room_menu_btn.setCursor(Qt.PointingHandCursor)
         self._room_menu_btn.clicked.connect(self._show_room_menu)
@@ -293,6 +306,11 @@ class MainWindow(QMainWindow):
         room_content.setContentsMargins(0, 0, 0, 0)
         room_content.setSpacing(5)  # Plus the grid's 5px top margin: 10px total.
         room_content.addLayout(room_bar)
+        self._access_hint = QLabel()
+        self._access_hint.setFont(QFont('Microsoft YaHei UI', 10))
+        self._access_hint.setAlignment(Qt.AlignCenter)
+        self._access_hint.setWordWrap(True)
+        room_content.addWidget(self._access_hint)
 
         # ---- 卡片滚动区 ----
         self._scroll = QScrollArea()
@@ -318,7 +336,14 @@ class MainWindow(QMainWindow):
         content_host.setObjectName("contentHost")
         content_host.setLayout(content)
         body.addWidget(content_host, stretch=1)
-        root.addLayout(body)
+        normal_content = QWidget()
+        normal_content.setLayout(body)
+        self._content_stack = QStackedWidget()
+        self._content_stack.addWidget(normal_content)
+        from app.ui.loading_page import LoadingPage
+        self._loading_page = LoadingPage()
+        self._content_stack.addWidget(self._loading_page)
+        root.addWidget(self._content_stack, stretch=1)
         self._footer = FooterBar(BOTTOM_RESERVED_HEIGHT)
         self._footer.check_requested.connect(self._check_footer_update)
         self._footer.update_requested.connect(self._open_footer_update)
@@ -340,6 +365,145 @@ class MainWindow(QMainWindow):
 
         # 顶栏/标题栏固定控件的内联样式集中在此设置，主题切换时重设
         self._reapply_chrome_styles()
+        self._network_monitor.changed.connect(self._on_network_changed)
+        self._loading_progress.connect(self._on_loading_progress)
+        self._load_watchdog = QTimer(self)
+        self._load_watchdog.setSingleShot(True)
+        self._load_watchdog.setInterval(30000)
+        self._load_watchdog.timeout.connect(self._on_loading_timeout)
+        self._sync_access_ui()
+
+    def _begin_loading(self, full_page=False, *, show_footer=False):
+        self._load_generation += 1
+        self._load_active = True
+        self._load_full_page = full_page
+        self._load_show_footer = show_footer and not full_page
+        self._load_had_failure = False
+        self._load_value = 0
+        self._load_pending = {'list'}
+        self._poll_timer.stop()
+        self._metrics_timer.stop()
+        self._footer.setVisible(not full_page)
+        if full_page:
+            self._voice_fab.collapse()
+            self._voice_fab.hide()
+            self._content_stack.setCurrentWidget(self._loading_page)
+        self._on_loading_progress(self._load_generation, 3, '正在准备设备…')
+
+    def _on_loading_progress(self, generation, value, text):
+        if not self._load_active or generation != self._load_generation:
+            return
+        self._load_watchdog.start()
+        self._load_value = max(self._load_value, min(100, value))
+        self._loading_page.set_progress(self._load_value, text)
+        if not self._load_show_footer:
+            self._footer.set_progress(None)
+            self._footer.set_status('')
+        else:
+            self._footer.set_progress(self._load_value, text)
+
+    def _prepare_loading_states(self):
+        if self._load_active:
+            self._load_pending = {'power', 'metrics'}
+            self._on_loading_progress(self._load_generation, 80, '正在读取设备状态…')
+
+    def _load_task_done(self, task, *, generation=None, failed=False):
+        if (not self._load_active or task not in self._load_pending
+                or (generation is not None and generation != self._load_generation)):
+            return
+        self._load_pending.remove(task)
+        self._load_had_failure |= failed
+        if self._load_pending:
+            self._on_loading_progress(self._load_generation, 90, '正在同步设备读数…')
+        else:
+            self._finish_loading()
+
+    def _finish_loading(self, success=True):
+        if not self._load_active:
+            return
+        if success:
+            self._on_loading_progress(self._load_generation, 100, '设备已就绪')
+        self._load_active = False
+        self._load_watchdog.stop()
+        self._set_refresh_busy(False)
+        self._load_generation += 1
+        self._load_pending.clear()
+        self._content_stack.setCurrentIndex(0)
+        self._footer.show()
+        self._footer.set_progress(None)
+        self._clear_status_hint()
+        self._update_voice_fab()
+        if success and self._access_state() == 'ready':
+            self._poll_timer.start()
+            self._metrics_timer.start()
+        if success and self._load_had_failure:
+            self._show_status('设备已载入，部分状态暂未读取', 5000)
+
+    def _on_loading_timeout(self):
+        self._finish_loading(success=False)
+        if self._reconnecting:
+            self._connection_failed = True
+            self._sync_access_ui()
+        self._show_status('刷新超时，请检查网络后重试。', 8000)
+
+    def _accept_device_list(self, generation, result=None, error=None):
+        if not self._load_active or generation != self._load_generation:
+            return
+        if error is not None:
+            self._on_load_error(error)
+        else:
+            self._on_devices_loaded(result)
+
+    def _access_state(self):
+        if not self._network_online:
+            return 'offline'
+        if self._logged_out:
+            return 'signed_out'
+        if self._reconnecting:
+            return 'unavailable' if self._connection_failed else 'loading'
+        return 'ready'
+
+    def _sync_access_ui(self):
+        from app.core.availability import MESSAGES, speaker_hint
+        state = self._access_state()
+        ready = state == 'ready'
+        hint = MESSAGES.get(state, '') or speaker_hint(self._all_devices)
+        self._access_hint.setText(hint)
+        self._access_hint.setVisible(bool(hint))
+        self._access_hint.setStyleSheet(
+            f'color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 10pt;')
+        self._access_hint.setSizePolicy(QSizePolicy.Expanding,
+            QSizePolicy.Preferred if ready else QSizePolicy.Expanding)
+        self._scroll.setVisible(ready)
+        self._home_btn.setVisible(ready)
+        self._device_summary.setVisible(ready)
+        self._room_strip.setVisible(ready)
+        self._room_menu_btn.setVisible(ready)
+        self._service.set_control_access(MESSAGES.get(state, ''))
+        self._update_voice_fab()
+        if self._tray is not None:
+            self._tray._quick.set_access_state(state)
+        if not ready:
+            self._finish_loading(success=False)
+            self._poll_timer.stop()
+            self._metrics_timer.stop()
+            for dialog in list(getattr(self, '_light_windows', {}).values()):
+                if shiboken6.isValid(dialog):
+                    dialog.reject()
+
+    def _on_network_changed(self, online):
+        self._network_online = online
+        if online and not self._logged_out:
+            self._reconnecting = True
+            self._connection_failed = False
+            self._known_power.clear()
+            self._metrics.clear()
+        self._sync_access_ui()
+        if online:
+            if self._logged_out:
+                self.start()
+            else:
+                self.load_devices()
 
     # ---------- 主题 ----------
 
@@ -350,6 +514,7 @@ class MainWindow(QMainWindow):
         走各自的重建入口；这里只管不重建的框架件。
         """
         self._title_bar.retheme()
+        self._loading_page.retheme()
         self._footer.retheme()
         self._count_label.setStyleSheet(
             f"color: {SiColors.TEXT_SECONDARY}; background: transparent; font-size: 10.2pt;")
@@ -391,7 +556,7 @@ class MainWindow(QMainWindow):
     def _set_refresh_busy(self, busy: bool) -> None:
         self._loading_devices = busy
         self._refresh_btn.setEnabled(not busy)
-        self._refresh_btn.setToolTip("正在刷新…" if busy else "刷新设备")
+        self._refresh_btn.setAccessibleName("正在刷新…" if busy else "刷新设备")
         if busy:
             self._refresh_spin.start()
         else:
@@ -430,16 +595,18 @@ class MainWindow(QMainWindow):
         # 托盘独立打开的详情对话框（即用即建，但开着时切主题需重建）
         from PySide6.QtWidgets import QApplication
         from app.ui.device_dialog import DeviceDetailDialog
+        from app.ui.light_controls import LightControlDialog
         for w in QApplication.topLevelWidgets():
-            if isinstance(w, DeviceDetailDialog) and w.isVisible():
+            if isinstance(w, (DeviceDetailDialog, LightControlDialog)) and w.isVisible():
                 w.retheme()
         if self._all_devices:
             self._refresh_power_states(force=False)
+        self._sync_access_ui()
 
     # ---------- 内嵌标题栏与窗口操作 ----------
 
     def _build_title_bar(self) -> QWidget:
-        bar = WindowCaption(self)
+        bar = WindowCaption(self, show_tooltips=False, brand=True)
         self._title_bar = bar
         self._max_btn = bar.maximize_button
         bar.installEventFilter(self)
@@ -514,7 +681,7 @@ class MainWindow(QMainWindow):
     # ---------- 启动与数据加载 ----------
 
     def _show_status(self, text: str, timeout_ms: int = 3000) -> None:
-        self._footer.set_status(text)
+        self._footer.set_status('' if self._load_active and not self._load_show_footer else text)
         self._status_timer.stop()
         if timeout_ms > 0:
             self._status_timer.start(timeout_ms)
@@ -537,6 +704,9 @@ class MainWindow(QMainWindow):
 
     def start(self) -> None:
         """应用入口第一步：校验登录态，决定拉列表还是弹扫码窗。"""
+        if not self._network_online:
+            self._sync_access_ui()
+            return
         self._show_status("正在检查登录状态…")
         self._jobs.submit(
             self._service.login_status,
@@ -581,10 +751,12 @@ class MainWindow(QMainWindow):
                 self._show_status(f'无法读取账号配置：{error}', 5000)
                 return
             self._logged_out = False
+            self._sync_access_ui()
             self._footer.set_logged_in(True)
             self._startup_load()
             return
         self._logged_out = True
+        self._sync_access_ui()
         self._footer.set_logged_in(False)
         self._clear_status_hint()
         self._login_account()
@@ -599,19 +771,31 @@ class MainWindow(QMainWindow):
         self._metrics_timer.start()
         cached = device_cache.load()
         if cached is None:
-            self.load_devices()
+            self.load_devices(full_page=True)
             return
+        self._begin_loading(full_page=True)
         devices, known_power, metrics = cached
         self._known_power.update(known_power)
         self._metrics.update(metrics)
         self._show_status("已从本地缓存加载，点击右上角刷新按钮可同步最新设备")
+        self._prepare_loading_states()
         self._apply_devices(devices)
 
     def _login_account(self):
         from app.ui.login_dialog import LoginDialog
-        dialog = LoginDialog(self._service, self._jobs, self)
-        if dialog.exec_and_wait() == LoginDialog.Accepted:
-            self._after_login_check(True)
+        if not self._network_online:
+            self._sync_access_ui()
+            return
+        if self._login_dialog is not None:
+            self._login_dialog.raise_()
+            self._login_dialog.activateWindow()
+            return
+        dialog = self._login_dialog = LoginDialog(self._service, self._jobs, self)
+        try:
+            if dialog.exec_and_wait() == LoginDialog.Accepted:
+                self._after_login_check(True)
+        finally:
+            self._login_dialog = None
 
     def _change_account(self):
         if self._account_transition:
@@ -619,6 +803,7 @@ class MainWindow(QMainWindow):
         if self._logged_out:
             self._login_account()
             return
+        self._finish_loading(success=False)
         self._account_transition = True
         self._poll_timer.stop()
         self._metrics_timer.stop()
@@ -677,32 +862,49 @@ class MainWindow(QMainWindow):
             self._tray.retheme()
             self._tray.set_devices([], {})
         self._footer.set_logged_in(False)
+        self._sync_access_ui()
         self._clear_status_hint()
         self._resume_account_ui()
 
-    def load_devices(self) -> None:
+    def load_devices(self, checked=False, *, full_page=False, manual=False) -> None:
+        if not self._network_online:
+            self._sync_access_ui()
+            return
         if self._logged_out:
             self._login_account()
             return
         if self._loading_devices:
             return
+        self._begin_loading(full_page=full_page, show_footer=manual)
         self._set_refresh_busy(True)
         self._show_status("正在获取设备列表…", 0)
+        generation = self._load_generation
+        progress = lambda value, text: self._loading_progress.emit(generation, value, text)
         self._jobs.submit(
-            self._service.list_devices,
-            on_success=self._on_devices_loaded,
-            on_error=self._on_load_error,
+            lambda: self._service.list_devices(progress=progress),
+            on_success=lambda result: self._accept_device_list(generation, result=result),
+            on_error=lambda error: self._accept_device_list(generation, error=error),
+            priority=0,
         )
 
     def _on_devices_loaded(self, devices: list[DeviceInfo]) -> None:
+        show_summary = not (self._load_active and self._load_full_page)
+        self._reconnecting = False
+        self._connection_failed = False
+        if self._network_online and not self._logged_out:
+            if not self._load_active:
+                self._poll_timer.start()
+                self._metrics_timer.start()
+            self._service.set_control_access()
         # 对比要在替换前做：added/removed 以旧列表为基准
         added, removed = self._diff_devices(devices)
+        self._prepare_loading_states()
         self._apply_devices(devices)
         device_cache.save(devices, self._known_power, self._metrics)
         self._set_refresh_busy(False)
         self._status_timer.stop()
         self._clear_status_hint()
-        if self._all_devices or added or removed:
+        if show_summary and (self._all_devices or added or removed):
             Toast.info(self, _refresh_summary(len(devices), added, removed))
 
     def _diff_devices(self, devices: list[DeviceInfo]) -> tuple[int, int]:
@@ -711,6 +913,12 @@ class MainWindow(QMainWindow):
         return len(new - old), len(old - new)
 
     def _apply_devices(self, devices: list[DeviceInfo]) -> None:
+        prepare_device_cards(devices)
+        from app.core.device_controls import prune_tray_selection, supports_card_power
+        prune_tray_selection(devices)
+        for device in devices:
+            if not supports_card_power(device) or not device.online:
+                self._known_power[device.did] = None
         self._all_devices = devices
         homes = sorted(
             {d.home_name for d in devices},
@@ -725,10 +933,15 @@ class MainWindow(QMainWindow):
         self._rebuild_grid()
         self._update_count_label()
         self._refresh_power_states(force=False)
-        self._refresh_metrics()
+        # Classify live power capabilities first; then read sensor values only
+        # for the remaining devices. Otherwise a cold refresh queries every
+        # switch/split channel's incidental properties as well.
+        if not (self._load_active and 'power' in self._load_pending):
+            self._refresh_metrics()
         self._update_voice_fab()
         self._update_tray_devices()
         self._load_card_icons()
+        self._sync_access_ui()
         # 场景入口开启时启动即预取场景列表，进场景页无需等待
         if self._show_scene_tab:
             self._load_scenes()
@@ -742,13 +955,20 @@ class MainWindow(QMainWindow):
         本方法只处理缺失部分：拉 URL、缺图下发下载；图标 URL 与图片
         都落本地缓存（见 icon_store），设备列表不变时不会重复调接口。
         """
+        if not self._network_online or self._logged_out:
+            return
         models = sorted({d.model for d in self._all_devices if d.model})
         if not models:
             return
-        self._jobs.submit(
-            lambda m=models: self._service.icon_urls(m),
-            on_success=self._on_icons_ready,
-        )
+        # One model per task lets a manual refresh run between network lookups.
+        for model in models:
+            if icon_store.icon_path(model).is_file():
+                continue
+            self._jobs.submit(
+                lambda m=model: self._service.icon_urls([m]),
+                on_success=self._on_icons_ready,
+                priority=20,
+            )
 
     def _on_icons_ready(self, urls: dict[str, str | None]) -> None:
         """图标 URL 就绪：缺图的下发后台下载，下载完成回填当前可见卡片。"""
@@ -761,6 +981,7 @@ class MainWindow(QMainWindow):
                 lambda m=model, u=url: self._service.icon_file(m, u),
                 on_success=lambda p, m=model: self._apply_card_icon(m, str(p))
                 if p else None,
+                priority=20,
             )
 
     def _apply_card_icon(self, model: str, path: str) -> None:
@@ -805,11 +1026,20 @@ class MainWindow(QMainWindow):
                           if not self._service.has_product_page_name(d.model)})
         if pending and not self._localize_busy:
             self._localize_busy = True
-            self._jobs.submit(
-                lambda: [self._service.product_page_name(m) for m in pending],
-                on_success=lambda _: self._on_product_names_fetched(),
-                on_error=lambda e: self._on_product_names_failed(e),
-            )
+            remaining = set(pending)
+            def completed(model, error=None):
+                remaining.discard(model)
+                if error is not None:
+                    logger.warning('产品页名称查询失败: %s', error)
+                if not remaining:
+                    self._on_product_names_fetched()
+            for model in pending:
+                self._jobs.submit(
+                    lambda m=model: self._service.product_page_name(m),
+                    on_success=lambda _, m=model: completed(m),
+                    on_error=lambda error, m=model: completed(m, error),
+                    priority=20,
+                )
 
     def _apply_display_names(self, replacements: dict[str, str]) -> bool:
         """把替换名写入设备对象并重建展示；返回是否有实际变化。"""
@@ -968,6 +1198,12 @@ class MainWindow(QMainWindow):
         输出音箱：设置的默认音箱（在线时）优先，否则回退第一个在线音箱。
         """
         from app.core.settings_store import get_default_speaker_did, get_voice_fab_enabled
+        if (getattr(self, '_logged_out', False) or not getattr(self, '_network_online', True)
+                or (getattr(self, '_load_active', False) and self._load_full_page)):
+            self._voice_did = None
+            self._voice_fab.collapse()
+            self._voice_fab.hide()
+            return
         pref = get_default_speaker_did()
         speaker = next(
             (d for d in self._all_devices
@@ -1036,41 +1272,55 @@ class MainWindow(QMainWindow):
     def _refresh_power_states(self, force: bool) -> None:
         """批量拉取当前可见设备的开关状态。
 
-        force=False 只探测还没有结论的设备（首次/新设备）；
+        force=False 探测还没有读到状态的设备（首次/新设备/上次失败）；
         force=True 忽略记忆全量重读（定时轮询）。
         离线设备的云端返回值是最后一次在线时的缓存，不可信，跳过。
         """
+        if not getattr(self, '_network_online', True) or getattr(self, '_logged_out', False):
+            return
         # 以 DeviceInfo.online 为准：离线设备的云端开关值不可信
         dids = [d.did for d in self._visible_devices() if d.online]
+        online = {d.did for d in getattr(self, '_all_devices', self._visible_devices()) if d.online}
+        dids += [child for d in self._visible_devices() if d.online
+                 for child in getattr(d, 'switch_channels', ()) if child in online]
+        dids = list(dict.fromkeys(dids))
         if not dids:
+            if getattr(self, '_load_active', False):
+                self._load_task_done('power')
             return
-        if not force:
-            dids = [d for d in dids if d not in self._known_power]
+        if not force and not getattr(self, '_load_active', False):
+            dids = [d for d in dids if self._known_power.get(d) is None]
             if not dids:
                 return
-        else:
-            # 轮询仅针对已确认有开关能力的设备，避免无开关设备无效请求
-            dids = [d for d in dids if self._known_power.get(d) is not None]
-            if not dids:
-                return
+        # None can mean a transient read failure, not just no capability.
+        # The service uses cached specs to skip devices without a switch;
+        # retry online devices so a missing button can recover automatically.
         self._poll_in_flight = True
+        generation = getattr(self, '_load_generation', None)
         self._jobs.submit(
             lambda: self._service.power_states(dids),
-            on_success=self._apply_power_states,
-            on_error=self._on_poll_error,
+            on_success=lambda states: self._apply_power_states(states, load_ticket=generation),
+            on_error=lambda error: self._on_poll_error(error, load_ticket=generation),
+            priority=1 if getattr(self, '_load_active', False) else 10,
         )
 
-    def _on_poll_error(self, error: Exception) -> None:
+    def _on_poll_error(self, error: Exception, *, load_ticket=None) -> None:
         # 轮询失败不打断界面，但必须留痕：持续失败意味着网络/凭据异常
         self._poll_in_flight = False
         logger.warning("轮询设备开关状态失败: %s", error)
+        self._load_task_done('power', generation=load_ticket, failed=True)
+        if self._load_active and load_ticket == self._load_generation:
+            self._refresh_metrics()
 
-    def _apply_power_states(self, states: dict[str, bool | None]) -> None:
+    def _apply_power_states(self, states: dict[str, bool | None], *, load_ticket=None) -> None:
         self._poll_in_flight = False
         for did, state in states.items():
             self._apply_power_state(did, state)
         self._maybe_localize_names()
         self._update_tray_devices()
+        self._load_task_done('power', generation=load_ticket)
+        if self._load_active and load_ticket == self._load_generation:
+            self._refresh_metrics()
 
     def _apply_power_state(self, did: str, state: bool | None) -> None:
         # 离线设备的开关值不落记忆，避免云端缓存的旧值覆盖灰置状态
@@ -1082,6 +1332,13 @@ class MainWindow(QMainWindow):
         card = self._cards.get(did)
         if card is not None and state is not None:
             card.set_power_state(state)
+        self._update_panel_cards()
+
+    def _update_panel_cards(self):
+        for device in self._all_devices:
+            card = self._cards.get(device.did)
+            if device.switch_channels and card is not None:
+                card.set_panel_states(self._known_power)
 
     def _refresh_metrics(self) -> None:
         """为无开关能力的可见设备批量拉温湿度读数（副标题展示）。
@@ -1089,19 +1346,24 @@ class MainWindow(QMainWindow):
         有开关的设备副标题保持纯房间名；温湿度计这类设备读 SI 标准
         temperature/humidity 属性，读数失败静默跳过。
         """
+        if not self._network_online or self._logged_out:
+            return
         dids = [
             d.did for d in self._visible_devices()
-            if self._known_power.get(d.did) is None
+            if d.online and self._known_power.get(d.did) is None
         ]
         if not dids:
+            self._load_task_done('metrics')
             return
+        generation = self._load_generation
         self._jobs.submit(
             lambda: self._service.read_metrics(dids),
-            on_success=self._apply_metrics,
-            on_error=lambda exc: logger.warning("拉取温湿度读数失败: %s", exc),
+            on_success=lambda metrics: self._apply_metrics(metrics, load_ticket=generation),
+            on_error=lambda error: self._on_metrics_error(error, generation),
+            priority=1 if self._load_active else 10,
         )
 
-    def _apply_metrics(self, metrics: dict[str, str | None]) -> None:
+    def _apply_metrics(self, metrics: dict[str, str | None], *, load_ticket=None) -> None:
         dirty = False
         for did, text in metrics.items():
             if text:
@@ -1118,6 +1380,11 @@ class MainWindow(QMainWindow):
             device_cache.save(self._all_devices, self._known_power, self._metrics)
         self._maybe_localize_names()
         self._push_tray_metrics()
+        self._load_task_done('metrics', generation=load_ticket)
+
+    def _on_metrics_error(self, error, generation):
+        logger.warning('拉取温湿度读数失败: %s', error)
+        self._load_task_done('metrics', generation=generation, failed=True)
 
     def _push_tray_metrics(self) -> None:
         """把温湿度读数同步给托盘快捷窗口（副标题展示）。"""
@@ -1127,19 +1394,6 @@ class MainWindow(QMainWindow):
             except Exception:
                 # 托盘行可能在重建间隙销毁，同步失败可安全忽略
                 pass
-
-    def _on_detail_metrics(self, did: str, text: str) -> None:
-        """详情页回读到温湿度后立即回写卡片与缓存（手动刷新路径）。"""
-        if not text:
-            return
-        if self._metrics.get(did) == text:
-            return
-        self._metrics[did] = text
-        card = self._cards.get(did)
-        if card is not None:
-            card.set_metrics(text)
-        if self._all_devices:
-            device_cache.save(self._all_devices, self._known_power, self._metrics)
 
     def _visible_devices(self) -> list[DeviceInfo]:
         return [
@@ -1220,7 +1474,12 @@ class MainWindow(QMainWindow):
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_load_error(self, error: Exception) -> None:
+        self._finish_loading(success=False)
         self._set_refresh_busy(False)
+        if not self._network_online or self._reconnecting:
+            self._connection_failed = True
+            self._sync_access_ui()
+            return
         self._show_status("加载失败", 4000)
         QMessageBox.critical(self, "加载失败", str(error))
 
@@ -1329,6 +1588,7 @@ class MainWindow(QMainWindow):
         rows = (len(visible) + cols - 1) // cols
         for index, device in enumerate(visible):
             card = DeviceCard(device)
+            card.set_panel_states(self._known_power)
             card.setFixedWidth(self._grid_card_width(cols, index % cols))
             # 记忆里的开关状态与读数立即回显，重建卡片不丢状态
             known = self._known_power.get(device.did)
@@ -1402,6 +1662,7 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt 命名约定)
         super().showEvent(event)
+        self._network_monitor.check_now()
         # 统一使用逻辑尺寸：200% 系统缩放时对应 2320×1480 物理像素。
         # 首次显示居中；后续托盘唤出保留用户调整的位置和大小。
         if not self._default_size_applied:
@@ -1512,6 +1773,7 @@ class MainWindow(QMainWindow):
         card.set_busy(False)
         card.set_power_state(new_state)
         self._known_power[did] = new_state
+        self._update_panel_cards()
         self._update_tray_devices()
         Toast.info(
             self, f"已{'打开' if new_state else '关闭'}「{card.device.name}」", 2500
@@ -1527,6 +1789,8 @@ class MainWindow(QMainWindow):
 
     def _load_scenes(self) -> None:
         """拉取当前范围的场景列表；失败保留已有缓存。"""
+        if not self._network_online or self._logged_out:
+            return
         if self._loading_scenes:
             return
         self._loading_scenes = True
@@ -1587,19 +1851,41 @@ class MainWindow(QMainWindow):
         device = next((d for d in self._all_devices if d.did == did), None)
         if device is None:
             return
+        if not has_device_details(device) or not device.online:
+            return
+        if is_light(device):
+            self._open_light_window(device)
+            return
         if '.camera.' in device.model:
             self._open_camera_window(device)
             return
-        dialog = DeviceDetailDialog(self._service, self._jobs, device, self)
-        # 详情内取到温湿度后直接回写卡片与缓存（手动刷新的即时反馈）
-        dialog.panel.metrics_updated.connect(self._on_detail_metrics)
+
+    def _open_light_window(self, device, *, from_tray=False):
+        from app.ui.light_controls import LightControlDialog
+        if not has_device_details(device) or self._access_state() != 'ready':
+            return
+        if not hasattr(self, '_light_windows'):
+            self._light_windows = {}
+        current = self._light_windows.get(device.did)
+        if current is not None and shiboken6.isValid(current):
+            current.show()
+            current.raise_()
+            current.activateWindow()
+            return
+        dialog = LightControlDialog(self._service, self._jobs, device,
+                                    None if from_tray else self)
+        self._light_windows[device.did] = dialog
+        dialog.power_changed.connect(lambda state: (
+            self._apply_power_state(device.did, state), self._update_tray_devices()))
+        def closed(_):
+            self._light_windows.pop(device.did, None)
+            self._refresh_closed_detail(device.did)
+            dialog.deleteLater()
+        dialog.finished.connect(closed)
+        card = self._cards.get(device.did)
+        anchor = card.mapToGlobal(card.rect().bottomLeft()) if card is not None and self.isVisible() and not from_tray else None
+        dialog.show_near(anchor)
         dialog.load()
-        dialog.exec()
-        dialog.panel.metrics_updated.disconnect(self._on_detail_metrics)
-        dialog.deleteLater()
-        # 详情期间可能在面板里改过开关，关闭后读一次回填卡片；
-        # 无开关能力的设备返回 None 直接跳过
-        self._refresh_closed_detail(did)
 
     def _open_camera_window(self, device):
         if not hasattr(self, '_camera_windows'):

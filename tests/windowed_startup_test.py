@@ -9,6 +9,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WindowedStartupTest(unittest.TestCase):
+    def test_show_main_flag_overrides_saved_tray_start_without_changing_preference(self):
+        code = '''
+import os, sys
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+from unittest.mock import patch
+from PySide6.QtWidgets import QWidget
+import run
+class Window(QWidget):
+    def start(self): pass
+def ready(app, window):
+    app.exit(0 if window.isVisible() else 1)
+sys.argv = ['run.py', '--show-main']
+with patch.object(run, 'MainWindow', Window), patch('app.core.settings_store.should_start_hidden', return_value=True):
+    raise SystemExit(run.main(ready))
+'''
+        result = subprocess.run([sys.executable, '-c', code], cwd=ROOT, timeout=20)
+        self.assertEqual(result.returncode, 0)
+
     def test_dependency_import_with_all_standard_streams_absent(self):
         code = '''
 import runpy, sys

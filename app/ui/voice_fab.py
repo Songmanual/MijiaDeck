@@ -73,7 +73,7 @@ class VoiceFab(QWidget):
         self._ball = QPushButton(self)
         self._ball.setObjectName("voiceBall")
         self._ball.setCursor(Qt.PointingHandCursor)
-        self._ball.setToolTip("小爱同学 · 输入文字控制设备")
+        self._ball.setAccessibleName("小爱同学 · 输入文字控制设备")
         self._ball.setAccessibleName("输入小爱指令")
         self._ball.setIcon(qta.icon('mdi.keyboard-outline', color=SiColors.ON_THEME_TEXT))
         self._ball.setIconSize(QSize(36, 36))

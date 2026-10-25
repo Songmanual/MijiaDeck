@@ -124,12 +124,6 @@ def run_dialog(dlg, name):
 run_dialog(SettingsDialog(win, devices=devs), "SettingsDialog")
 from app.ui.tray import TrayManagerDialog
 run_dialog(TrayManagerDialog(devs), "TrayManagerDialog")
-from app.ui.device_dialog import DeviceDetailDialog
-run_dialog(DeviceDetailDialog(svc, jobs, devs[0], win), "DeviceDetailDialog")
-from app.ui.add_drawer import AddDrawer
-a = AddDrawer(win)
-a.set_modules([("on", "开关", "开")], set())
-run_dialog(a, "AddDrawer")
 print("6. 对话框淡出关闭回归 OK")
 
 # ---------- 7. 托盘整窗重建（走 _on_theme_changed 真实路径） ----------

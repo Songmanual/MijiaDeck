@@ -33,7 +33,6 @@ class TraySettingsTest(unittest.TestCase):
                 controller = SimpleNamespace(_main=main, _quick=quick)
                 try:
                     TrayController._on_settings(controller)
-                    quick.abort_toggle_animation.assert_called_once()
                     quick.hide.assert_called_once()
                     self.assertTrue(main.isVisible())
                     self.assertFalse(main.isMinimized())

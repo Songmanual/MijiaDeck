@@ -7,10 +7,12 @@ from app.ui.si_theme import SiColors
 
 
 class CameraCornerTag(QWidget):
-    def __init__(self, parent):
+    def __init__(self, parent, *, corner_radius=9, width=38, height=12, font_size=5.5):
         super().__init__(parent)
+        self._corner_radius = corner_radius
+        self._font_size = font_size
         self.setObjectName('cameraCornerTag')
-        self.setFixedSize(38, 12)
+        self.setFixedSize(width, height)
         self.move(0, 0)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAccessibleName('摄像头 CAMERA')
@@ -19,21 +21,25 @@ class CameraCornerTag(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         clip = QPainterPath()
-        clip.addRoundedRect(QRectF(self.parentWidget().rect()), 9, 9)
+        clip.addRoundedRect(QRectF(self.parentWidget().rect()), self._corner_radius, self._corner_radius)
         painter.setClipPath(clip)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(SiColors.CAMERA_TAG_BG))
         tag = QPainterPath()
         tag.moveTo(0, 0)
-        tag.lineTo(38, 0)
-        tag.quadTo(38, 12, 26, 12)
-        tag.lineTo(0, 12)
+        width, height = self.width(), self.height()
+        tag.lineTo(width, 0)
+        tag.quadTo(width, height, width - height, height)
+        tag.lineTo(0, height)
         tag.closeSubpath()
         painter.drawPath(tag)
         painter.setClipPath(tag, Qt.IntersectClip)
-        painter.translate(18, 6)
+        painter.translate(width / 2 - 1, height / 2)
         text = QPainterPath()
-        text.addText(QPointF(0, 0), QFont('Segoe UI', 5.5, QFont.Weight.Bold), 'CAMERA')
+        font = QFont('Segoe UI')
+        font.setPointSizeF(self._font_size)
+        font.setWeight(QFont.Weight.Bold)
+        text.addText(QPointF(0, 0), font, 'CAMERA')
         # Center visible glyphs instead of the font's ascent/descent line box.
         painter.translate(-text.boundingRect().center())
         painter.fillPath(text, QColor('#ffffff'))

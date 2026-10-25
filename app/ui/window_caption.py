@@ -4,11 +4,12 @@
 https://github.com/XAVIER0229/GearPower/blob/main/ui.xaml
 """
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton
+from PySide6.QtGui import QColor, QPainter, QPen, QIcon, QFont
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QLabel
 from app.ui.si_theme import SiColors, is_dark
 
 CAPTION_HEIGHT = 34
+BRAND_CAPTION_HEIGHT = 48
 CAPTION_BUTTON_WIDTH = 46
 RESIZE_MARGIN = 6
 
@@ -47,14 +48,29 @@ class CaptionButton(QPushButton):
 
 
 class WindowCaption(QFrame):
-    def __init__(self, window):
+    def __init__(self, window, show_tooltips=True, brand=False):
         super().__init__(window)
         self._window = window
+        self._show_tooltips = show_tooltips
         self.setObjectName('titleBar')
-        self.setFixedHeight(CAPTION_HEIGHT)
+        self.setFixedHeight(BRAND_CAPTION_HEIGHT if brand else CAPTION_HEIGHT)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        self._brand_name = None
+        if brand:
+            from app import APP_NAME, resource_path
+            layout.addSpacing(22)
+            logo = QLabel()
+            logo.setStyleSheet('background: transparent;')
+            logo.setPixmap(QIcon(str(resource_path('app/ui/icon.png'))).pixmap(20, 20))
+            logo.setAttribute(Qt.WA_TransparentForMouseEvents)
+            layout.addWidget(logo)
+            layout.addSpacing(10)
+            self._brand_name = QLabel(APP_NAME)
+            self._brand_name.setFont(QFont('Microsoft YaHei UI', 10, QFont.DemiBold))
+            self._brand_name.setAttribute(Qt.WA_TransparentForMouseEvents)
+            layout.addWidget(self._brand_name)
         layout.addStretch(1)
         self.minimize_button = self._button('\ue921', '最小化', window.showMinimized)
         self.maximize_button = self._button('\ue922', '最大化', self.toggle_maximized)
@@ -68,10 +84,11 @@ class WindowCaption(QFrame):
     def _button(self, glyph, tooltip, action, close=False):
         button = CaptionButton(glyph, self, self._window, close)
         button.setObjectName('captionClose' if close else 'captionButton')
-        button.setFixedSize(CAPTION_BUTTON_WIDTH, CAPTION_HEIGHT)
+        button.setFixedSize(CAPTION_BUTTON_WIDTH, self.height())
         button.setAutoDefault(False)
         button.setCursor(Qt.ArrowCursor)
-        button.setToolTip(tooltip)
+        if self._show_tooltips:
+            button.setToolTip(tooltip)
         button.setAccessibleName(tooltip)
         button.clicked.connect(action)
         return button
@@ -82,6 +99,8 @@ class WindowCaption(QFrame):
         else:
             ink, hover, pressed, active = '#53657A', '#E9EFF6', '#DDE7F2', '#17202B'
         self.setStyleSheet(f'QFrame#titleBar {{ background: {SiColors.WINDOW_BG}; border: none; border-radius: 0; }}')
+        if self._brand_name is not None:
+            self._brand_name.setStyleSheet(f'color: {SiColors.TEXT_PRIMARY}; background: transparent; font-size: 10pt; font-weight: 600;')
         for button in (self.minimize_button, self.maximize_button, self.close_button):
             button._colors = (ink, hover, pressed, active)
             button.update()
@@ -93,7 +112,10 @@ class WindowCaption(QFrame):
     def _sync_maximized(self):
         maximized = self._window.isMaximized()
         self.maximize_button.setText('\ue923' if maximized else '\ue922')
-        self.maximize_button.setToolTip('还原' if maximized else '最大化')
+        label = '还原' if maximized else '最大化'
+        self.maximize_button.setAccessibleName(label)
+        if self._show_tooltips:
+            self.maximize_button.setToolTip(label)
 
     def eventFilter(self, obj, event):
         if obj is self._window and event.type() == QEvent.WindowStateChange:

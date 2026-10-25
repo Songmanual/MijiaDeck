@@ -25,7 +25,6 @@ class TrayActivationTest(unittest.TestCase):
         quick = controller._quick = Mock()
         quick.isVisible.return_value = False
         quick.is_explicitly_visible.return_value = False
-        quick.is_animating.return_value = False
         return controller, quick
 
     def test_single_and_standalone_double_click_open_popup(self):
@@ -34,21 +33,31 @@ class TrayActivationTest(unittest.TestCase):
             controller._on_activated(reason)
             quick.show_near_tray.assert_called_once()
 
+    def test_tray_uses_native_tooltip_without_hover_popup(self):
+        window = QWidget()
+        with patch.object(TrayController, '_create_quick_window'), \
+             patch.object(QSystemTrayIcon, 'show'):
+            controller = TrayController(Mock(), Mock(), window)
+        self.assertEqual(controller._tray.toolTip(), '单击图标打开浮窗控制设备')
+        self.assertFalse(hasattr(controller, '_hover_timer'))
+        controller._tray.hide()
+        window.deleteLater()
+
     def test_windows_double_click_sequence_does_not_toggle_twice(self):
         controller, quick = self.controller()
         for reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick,
                        QSystemTrayIcon.Trigger):
             controller._on_activated(reason)
         quick.show_near_tray.assert_called_once()
-        quick.hide_animated.assert_not_called()
+        quick.hide.assert_not_called()
 
     def test_click_visible_popup_closes_it_and_context_click_leaves_it_alone(self):
         controller, quick = self.controller()
         quick.isVisible.return_value = True
         controller._on_activated(QSystemTrayIcon.Context)
-        quick.hide_animated.assert_not_called()
+        quick.hide.assert_not_called()
         controller._on_activated(QSystemTrayIcon.Trigger)
-        quick.hide_animated.assert_called_once()
+        quick.hide.assert_called_once()
 
     def test_first_run_shows_main_and_guidance_before_starting_login_jobs(self):
         with TemporaryDirectory() as folder, \

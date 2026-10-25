@@ -36,7 +36,6 @@ class TrayPositionTest(unittest.TestCase):
 
     def tearDown(self):
         for window in self.windows:
-            window.abort_toggle_animation()
             window.hide()
             window.deleteLater()
         self.app.processEvents()
@@ -128,16 +127,15 @@ class TrayPositionTest(unittest.TestCase):
 
     def test_popup_allows_three_seconds_to_reach_then_short_leave_delay(self):
         q = self.quick
-        q._play_show_animation()
-        q.abort_toggle_animation()
-        q.hide_animated = Mock()
+        q._show_immediately()
+        q.hide = Mock()
         self.assertEqual(q._leave_timer.interval(), 3000)
         q._pointer_has_entered = False
         with patch.object(q, 'isActiveWindow', return_value=False), \
              patch.object(q, 'underMouse', return_value=False), \
              patch.object(QApplication, 'activeWindow', return_value=None):
             q._maybe_hide_on_deactivate()
-        q.hide_animated.assert_not_called()
+        q.hide.assert_not_called()
         self.assertTrue(q._leave_timer.isActive())
         event = QEnterEvent(QPointF(20, 20), QPointF(20, 20), QPointF(20, 20))
         QApplication.sendEvent(q, event)
@@ -145,7 +143,25 @@ class TrayPositionTest(unittest.TestCase):
         self.assertFalse(q._leave_timer.isActive())
         q._dragging = True
         q._hide_after_pointer_leave()
-        q.hide_animated.assert_not_called()
+        q.hide.assert_not_called()
+
+    def test_rapid_show_hide_is_immediate_and_stays_hidden(self):
+        q = self.quick
+        target = QPoint(30, 40)
+        with patch.object(q, '_popup_position', return_value=target):
+            for _ in range(10):
+                q._show_immediately()
+                self.assertTrue(q.isVisible())
+                self.assertEqual(q.pos(), target)
+                self.assertEqual(q.windowOpacity(), 1.0)
+                q.hide()
+                self.assertFalse(q.isVisible())
+                self.assertFalse(q.is_explicitly_visible())
+        from PySide6.QtTest import QTest
+        QTest.qWait(250)
+        self.assertFalse(q.isVisible())
+        self.assertEqual(q.pos(), target)
+
 
 
 if __name__ == '__main__':

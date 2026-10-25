@@ -7,7 +7,7 @@ on:
       release_tag:
         description: Release tag matching the source version (created after checks pass)
         required: true
-        default: v1.0.2
+        default: v1.1.0
         type: string
 
 permissions:
@@ -42,7 +42,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: >-
-          python -m unittest tests.tray_activation_test tests.windowed_startup_test tests.branding_test tests.audio_sync_test
+          python -m unittest tests.card_roles_test tests.refresh_queue_test tests.loading_test tests.device_controls_test tests.availability_test tests.split_switch_test tests.tray_activation_test tests.windowed_startup_test tests.branding_test tests.audio_sync_test
           tests.camera_drag_test tests.camera_preview_test tests.camera_window_test
           tests.footer_account_test tests.grid_width_test tests.room_tabs_test
           tests.theme_color_test tests.tray_position_test tests.tray_room_filter_test

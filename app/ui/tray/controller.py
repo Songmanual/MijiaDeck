@@ -34,7 +34,7 @@ class TrayController:
         _tray_icon.addFile(_icon_path, QSize(32, 32))
         _tray_icon.addFile(_icon_path, QSize(48, 48))
         self._tray = QSystemTrayIcon(_tray_icon, main_window)
-        self._tray.setToolTip("")
+        self._tray.setToolTip("单击图标打开浮窗控制设备")
         self._tray.activated.connect(self._on_activated)
 
         menu = QMenu()
@@ -94,6 +94,11 @@ class TrayController:
     def _create_quick_window(self) -> None:
         """创建快捷窗口并接线；主题切换时整窗重建复用。"""
         self._quick = TrayQuickWindow(self._service, self._jobs, None)
+        state = ('offline' if not getattr(self._main, '_network_online', True) else
+                 'signed_out' if getattr(self._main, '_logged_out', False) else 'ready')
+        if callable(getattr(self._main, '_access_state', None)):
+            state = self._main._access_state()
+        self._quick.set_access_state(state)
         self._quick.manage_requested.connect(self._on_manage)
         self._quick.open_device_requested.connect(self._on_open_device)
         self._quick.speaker_changed.connect(self._main._update_voice_fab)
@@ -119,17 +124,23 @@ class TrayController:
                 self._last_tray_click.start()
             return
         self._last_tray_click.start()
+        main = getattr(self, '_main', None)
+        monitor = getattr(main, '_network_monitor', None)
+        if callable(getattr(monitor, 'check_now', None)):
+            monitor.check_now()
+        if getattr(main, '_logged_out', False) and getattr(main, '_network_online', True):
+            self._show_main()
+            QTimer.singleShot(0, self._main, self._main._login_account)
+            return
         quick = self._quick
         visible = quick.isVisible() or quick.is_explicitly_visible()
-        if quick.is_animating():
-            quick.abort_toggle_animation()
         if visible:
-            quick.hide_animated()
+            quick.hide()
         else:
             quick.show_near_tray()
 
     def _show_main(self) -> None:
-        self._quick.hide_animated()
+        self._quick.hide()
         self._main.show()
         self._main.raise_()
         self._main.activateWindow()
@@ -152,7 +163,6 @@ class TrayController:
 
     def _on_settings(self) -> None:
         # Settings belongs to the main window, not the auto-hiding quick popup.
-        self._quick.abort_toggle_animation()
         self._quick.hide()
         if self._main.isMinimized():
             self._main.showNormal()
@@ -168,19 +178,20 @@ class TrayController:
 
     def _on_open_device(self, did: str) -> None:
         # 仅打开设备详情，不呼出主窗口，避免主窗口隐藏时卡死
-        self._quick.hide()
         # 直接创建详情对话框，parent 设为 None 使其独立于主窗口显隐
         dev = next((d for d in self._main.devices() if d.did == did), None)
         if dev is None:
             return
+        from app.core.device_controls import has_device_details, is_light
+        if not has_device_details(dev) or not dev.online:
+            return
+        self._quick.hide()
+        if is_light(dev):
+            self._main._open_light_window(dev, from_tray=True)
+            return
         if '.camera.' in dev.model:
             self._main._open_camera_window(dev)
             return
-        from app.ui.device_dialog import DeviceDetailDialog
-        dlg = DeviceDetailDialog(self._service, self._jobs, dev, None)
-        dlg.load()
-        dlg.exec()
-        dlg.deleteLater()
 
     def set_devices(self, devices: list[DeviceInfo], known_power: dict[str, bool | None]) -> None:
         self._quick.set_devices(devices, known_power)
@@ -201,7 +212,6 @@ class TrayController:
         在本调用之后立刻 set_devices 推送，显示状态在此登记。
         """
         was_visible = self._quick.isVisible() or self._quick.is_explicitly_visible()
-        self._quick.abort_toggle_animation()
         self._quick.hide()
         self._quick.deleteLater()
         self._create_quick_window()

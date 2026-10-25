@@ -31,11 +31,42 @@ from mijiaAPI import (
 )
 from mijiaAPI.devices import DevAction, DevProp
 from mijiaAPI.miutils import decrypt, generate_enc_params, gen_nonce, get_signed_nonce
+import mijiaAPI.apis as _sdk_apis
+import mijiaAPI.devices as _sdk_devices
+
+from .http_timeout import TimeoutRequests
+# SDK 5.x omits timeouts on cloud calls, token refresh and spec downloads.
+# Its local transport references are scoped here; installed SDK files, global
+# requests, explicit long-poll waits and certificate verification stay intact.
+_sdk_apis.requests = TimeoutRequests()
+_sdk_devices.requests = TimeoutRequests()
 
 from . import icon_store, spec_zh
 from .models import ActionInfo, DeviceDetail, DeviceInfo, PropInfo, SceneInfo
 
 logger = logging.getLogger(__name__)
+
+
+def _device_address(did: str) -> tuple[str, int | None]:
+    """Split MIoT service cards use parent hardware ID + service instance ID.
+
+    Xiaomi's ha_xiaomi_home miot_cloud.py likewise separates .sN sub-devices;
+    spec RPCs address the parent DID and the corresponding SIID.
+    """
+    match = re.fullmatch(r"(.+)\.s([0-9]+)", did)
+    return (match[1], int(match[2])) if match else (did, None)
+
+
+def _channel_spec(info: dict, did: str) -> dict:
+    _, siid = _device_address(did)
+    if siid is None:
+        return info
+    # Never mutate the shared spec cache: siblings use the same full spec.
+    return {**info, **{
+        key: [item for item in info.get(key, [])
+              if item.get("method", {}).get("siid") == siid]
+        for key in ("properties", "actions")
+    }}
 
 # 单次批量属性读取的设备数上限，防止请求体过大被网关拒绝
 _BATCH_SIZE = 15
@@ -55,6 +86,13 @@ def _wrap_error(exc: Exception, context: str) -> ServiceError:
 
 
 class MijiaService:
+    def set_control_access(self, message: str = '') -> None:
+        self._control_block_reason = message
+
+    def _require_control_access(self) -> None:
+        if reason := getattr(self, '_control_block_reason', ''):
+            raise ServiceError(reason)
+
     def __init__(self):
         # 认证文件沿用上游默认位置 ~/.config/mijia-api/auth.json，
         # 这样 CLI 里扫过的码在 GUI 直接生效，反之亦然
@@ -63,6 +101,7 @@ class MijiaService:
         # did -> (model, spec_type, name) 索引，批量读状态与共享设备组装时
         # 避免反复拉设备列表；自有与共享设备都在其中
         self._device_index: dict[str, tuple[str, str, str]] = {}
+        self._panel_parents = None
         # spec_type -> spec 内存缓存，轮询命中后不再读文件/打网络
         self._spec_cache: dict[str, dict | None] = {}
         # spec 产品名缓存就绪后的产品页中文名缓存：
@@ -126,6 +165,7 @@ class MijiaService:
         self._api = mijiaAPI(auth_data_path=str(path))
         self._device_cache.clear()
         self._device_index.clear()
+        self._panel_parents = None
         self._home_ids = None
 
     def login_status(self) -> bool:
@@ -159,18 +199,27 @@ class MijiaService:
 
     # ---------- 设备列表 ----------
 
-    def list_devices(self) -> list[DeviceInfo]:
+    def list_devices(self, progress=None) -> list[DeviceInfo]:
         """拉取全部家庭和共享设备并补齐房间归属。
 
         设备信息本身不含房间字段，参照 CLI 的实现思路：
         遍历每个家庭的 roomlist[].dids[] 反查出 did -> (家庭, 房间)。
         """
         try:
+            if progress:
+                progress(8, '正在获取家庭信息…')
             homes = self._api.get_homes_list()
-            devices = self._api.get_devices_list() + self._api.get_shared_devices_list()
+            if progress:
+                progress(25, '正在读取设备列表…')
+            devices = self._api.get_devices_list()
+            if progress:
+                progress(45, '正在读取共享设备…')
+            devices = devices + self._api.get_shared_devices_list()
         except Exception as exc:
             raise _wrap_error(exc, "获取设备列表失败") from exc
 
+        if progress:
+            progress(55, '正在整理房间和设备…')
         location: dict[str, tuple[str, str]] = {}
         for home in homes:
             for room in home.get("roomlist", []):
@@ -180,6 +229,10 @@ class MijiaService:
         result = []
         for d in devices:
             did = str(d["did"])
+            # The list response already has the routing metadata. Reuse it so
+            # the first state read/click does not fetch both device lists again.
+            self._device_index[did] = (
+                d.get("model", ""), d.get("spec_type") or "", d.get("name", ""))
             home_name, room_name = location.get(did, ("未知", "未知"))
             result.append(DeviceInfo(
                 did=did,
@@ -191,11 +244,31 @@ class MijiaService:
                 # 云端对无公开规格的设备（手表、第三方牙刷等）不下发该字段
                 spec_type=d.get("spec_type") or "",
             ))
+        from .device_controls import is_light, light_controls, prepare_device_cards, is_status_candidate
+        candidates = [device for device in result if is_light(device) or is_status_candidate(device)]
+        if progress:
+            progress(65, '正在识别灯光控制能力…')
+        specs = self._specs_for([device.did for device in candidates]) if candidates else {}
+        for device in candidates:
+            props = [PropInfo(name=p['name'], desc=p.get('description', ''),
+                     type=p.get('type', ''), readable='r' in p.get('rw', ''),
+                     writable='w' in p.get('rw', ''), range=p.get('range'))
+                     for p in (specs.get(device.did) or {}).get('properties', [])]
+            if is_light(device):
+                device.light_features = list(light_controls(props))
+            if specs.get(device.did) is not None:
+                device.metric_features = [p.name for p in props if p.readable and
+                    p.name in ('temperature', 'relative-humidity', 'humidity')]
+        prepare_device_cards(result)
+        self._panel_parents = {device.did for device in result if device.switch_channels}
+        if progress:
+            progress(75, '设备列表已就绪…')
         return sorted(result, key=lambda x: (x.home_name, x.room_name, x.name))
 
     # ---------- 设备控制 ----------
 
     def prepare_camera_source(self, device: DeviceInfo):
+        self._require_control_access()
         from .camera_access import build_camera_source
         from .camera_preview import CameraPreviewError
         if not device.online:
@@ -204,6 +277,7 @@ class MijiaService:
 
     def _camera_cloud_request(self, uri: str, data: dict) -> dict:
         """Bounded read-only RPC. Never log the fresh video keys or signed URL."""
+        self._require_control_access()
         from .camera_preview import CameraPreviewError
         try:
             security = self._api.auth_data["ssecurity"]
@@ -247,10 +321,11 @@ class MijiaService:
             ActionInfo(name=a.name, desc=a.desc or a.name)
             for a in dev.action_list.values()
         ]
-        return DeviceDetail(did=dev.did, name=dev.name, model=dev.model,
+        return DeviceDetail(did=did, name=dev.name, model=dev.model,
                             props=props, actions=actions)
 
     def read_prop(self, did: str, name: str):
+        self._require_control_access()
         dev = self._get_device(did)
         try:
             return dev.get(name)
@@ -263,6 +338,7 @@ class MijiaService:
         逐个读取时上游每个属性固定 sleep 0.5 秒，详情面板十几项
         属性要等近十秒；合并为批量请求后整面板一次往返即可完成。
         """
+        self._require_control_access()
         dev = self._get_device(did)
         queries: list[dict] = []
         key_to_name: dict[tuple, str] = {}
@@ -291,14 +367,20 @@ class MijiaService:
         return result
 
     def write_prop(self, did: str, name: str, value) -> None:
+        self._require_control_access()
         dev = self._get_device(did)
+        if self._is_split_parent(did):
+            raise ServiceError('面板本体仅展示信息，请操作对应灯路')
         try:
             dev.set(name, value)
         except Exception as exc:
             raise _wrap_error(exc, f"设置属性 {name} 失败") from exc
 
     def run_action(self, did: str, name: str, params=None) -> None:
+        self._require_control_access()
         dev = self._get_device(did)
+        if self._is_split_parent(did):
+            raise ServiceError('面板本体仅展示信息，请操作对应灯路')
         try:
             if params is not None:
                 # 小爱类文本指令需走 _in 通道（见 mijiaAPI __main__.py:523
@@ -339,7 +421,10 @@ class MijiaService:
                     "该设备无公开的功能规格（常见于仅蓝牙连接的产品），"
                     "无法提供控制面板")
             try:
-                self._device_cache[did] = mijiaDevice(self._api, did=did)
+                if _device_address(did)[1] is not None:
+                    self._device_cache[did] = self._build_shared_device(did)
+                else:
+                    self._device_cache[did] = mijiaDevice(self._api, did=did)
             except DeviceNotFoundError:
                 # 上游构造只查自有设备列表（不含共享设备），共享设备
                 # 必然在此失败；按上游 __init__ 的字段手工组装，后续
@@ -375,7 +460,7 @@ class MijiaService:
             act.desc = spec_zh.action_desc_zh(act.name, act.desc)
 
     def _build_shared_device(self, did: str) -> mijiaDevice:
-        """为共享设备手工组装 mijiaDevice（上游构造器不支持共享设备）。"""
+        """组装共享设备或拆分通道，保留展示身份，按真实硬件地址通信。"""
         if did not in self._device_index:
             self._refresh_device_index()
         model, spec_type, name = self._device_index.get(did, ("", "", ""))
@@ -395,9 +480,10 @@ class MijiaService:
         except Exception as exc:
             raise _wrap_error(exc, "加载设备信息失败") from exc
 
+        dev_info = _channel_spec(dev_info, did)
         dev = mijiaDevice.__new__(mijiaDevice)
         dev.api = self._api
-        dev.did = did
+        dev.did = _device_address(did)[0]
         dev.model = model
         dev.name = name or dev_info.get("name", did)
         dev.sleep_time = 0.5
@@ -444,13 +530,18 @@ class MijiaService:
         不经 mijiaDevice.set——那条路要构造设备对象并逐属性写入，
         首次点击要等两三次网络往返；直写批量接口一次请求完成。
         """
+        self._require_control_access()
+        if did not in self._device_index:
+            self._refresh_device_index()
+        if not self._supports_card_power(did):
+            raise ServiceError('该设备仅展示信息，不提供快捷电源控制')
         info = self._specs_for([did]).get(did)
         method = self._find_on_method(info) if info else None
         if method is None:
             raise ServiceError("设备不支持开关控制")
         try:
             rets = self._api.set_devices_prop(
-                [{"did": did, **method, "value": state}]
+                [{"did": _device_address(did)[0], **method, "value": state}]
             )
         except Exception as exc:
             raise _wrap_error(exc, "设置开关状态失败") from exc
@@ -474,18 +565,26 @@ class MijiaService:
         spec 线程池并发拉取（本地文件缓存后零开销）、属性按批合并
         读取。全部命中缓存时整批设备只剩一两次属性请求。
         """
-        spec_map = self._specs_for(dids)
+        self._require_control_access()
+        if any(did not in self._device_index for did in dids):
+            self._refresh_device_index()
+        spec_map = self._specs_for([did for did in dids if self._supports_card_power(did)])
 
         queries: list[dict] = []
-        result: dict[str, bool | None] = {}
+        result: dict[str, bool | None] = dict.fromkeys(dids)
+        targets: dict[tuple, list[str]] = {}
         for did in dids:
             info = spec_map.get(did)
-            method = self._find_on_method(info) if info else None
+            method = self._find_on_method(info) if info and not self._is_split_parent(did) else None
             if method is None:
                 # spec 缺失或无开关属性，直接记为无能力
                 result[did] = None
             else:
-                queries.append({"did": did, **method})
+                hardware = _device_address(did)[0]
+                key = (hardware, method["siid"], method["piid"])
+                if key not in targets:
+                    queries.append({"did": hardware, **method})
+                targets.setdefault(key, []).append(did)
 
         for start in range(0, len(queries), _BATCH_SIZE):
             batch = queries[start:start + _BATCH_SIZE]
@@ -494,10 +593,12 @@ class MijiaService:
             except Exception as exc:
                 raise _wrap_error(exc, "批量读取设备状态失败") from exc
             for item in rets:
-                did = str(item.get("did"))
+                key = (str(item.get("did")), item.get("siid"), item.get("piid"))
                 # code 非 0 多为设备离线，视为状态未知而非无能力；
                 # 这里同样记 None：按钮隐藏，下轮轮询会再尝试
-                result[did] = bool(item["value"]) if item.get("code") == 0 else None
+                for did in targets.get(key, []):
+                    result[did] = (bool(item["value"])
+                                   if item.get("code") == 0 and "value" in item else None)
         return result
 
     def _fetch_spec(self, spec_type: str, cache_dir) -> dict | None:
@@ -536,6 +637,22 @@ class MijiaService:
                 return prop["method"]
         return None
 
+    def _is_split_parent(self, did: str) -> bool:
+        if getattr(self, '_panel_parents', None) is not None:
+            return did in self._panel_parents
+        model, spec_type, _ = self._device_index.get(did, ('', '', ''))
+        if '.switch.' not in model and ':device:switch:' not in spec_type:
+            return False
+        return any(_device_address(child)[0] == did and child != did
+                   for child in self._device_index)
+
+    def _supports_card_power(self, did):
+        from .device_controls import supports_card_power
+        if self._is_split_parent(did):
+            return False
+        model, spec_type, name = self._device_index.get(did, ('', '', ''))
+        return supports_card_power(DeviceInfo(did, name, model, '', '', True, spec_type))
+
     # ---------- 环境读数（卡片副标题展示用） ----------
 
     def read_metrics(self, dids: list[str]) -> dict[str, str | None]:
@@ -545,6 +662,7 @@ class MijiaService:
         也叫 humidity），读不到的设备返回 None（副标题维持纯房间名）。
         多通道设备的同名属性取第一个通道。
         """
+        self._require_control_access()
         spec_map = self._specs_for(dids)
         queries: list[dict] = []
         key_to_metric: dict[tuple, tuple[str, str]] = {}  # (did,siid,piid) -> (did, metric)
@@ -636,7 +754,8 @@ class MijiaService:
                     result[did] = self._spec_cache.get(
                         self._device_index.get(did, ("", "", ""))[1]
                     )
-        return result
+        return {did: _channel_spec(info, did) if info else None
+                for did, info in result.items()}
 
     def _refresh_device_index(self) -> None:
         """重建 did -> (model, spec_type, name) 索引，自有与共享设备合并。
@@ -655,6 +774,9 @@ class MijiaService:
         for d in all_devices:
             self._device_index[str(d["did"])] = (
                 d.get("model", ""), d.get("spec_type") or "", d.get("name", ""))
+        self._panel_parents = {_device_address(str(d['did']))[0]
+            for d in all_devices if _device_address(str(d['did']))[1] is not None
+            and ('.switch.' in d.get('model', '') or ':device:switch:' in (d.get('spec_type') or ''))}
 
     # ---------- 场景（手动控制） ----------
 
@@ -701,6 +823,7 @@ class MijiaService:
 
     def run_scene(self, scene: SceneInfo) -> None:
         """执行手动场景；上游返回值为假视为失败。"""
+        self._require_control_access()
         try:
             ok = self._api.run_scene(scene.scene_id, scene.home_id)
         except Exception as exc:
@@ -745,7 +868,7 @@ class MijiaService:
                 self._api.auth_data["ssecurity"])
             ret = self._api.session.post(
                 self._api.api_base_url + uri, data=params,
-                allow_redirects=False, timeout=30)
+                allow_redirects=False, timeout=(3.05, 6))
         except Exception as exc:
             logger.warning("获取设备图标失败 %s: %s", model, exc)
             return None
@@ -762,7 +885,7 @@ class MijiaService:
         import requests
 
         try:
-            r = requests.get(url, timeout=15)
+            r = requests.get(url, timeout=(3.05, 6))
             if r.status_code != 200 or not r.content:
                 logger.warning("下载设备图标失败 %s: HTTP %s", model, r.status_code)
                 return None

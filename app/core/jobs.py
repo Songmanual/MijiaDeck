@@ -10,6 +10,7 @@
 
 import logging
 import queue
+import itertools
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
@@ -40,7 +41,8 @@ class JobExecutor(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._queue: queue.Queue[_Task | None] = queue.Queue()
+        self._queue = queue.PriorityQueue()
+        self._sequence = itertools.count()
         self._generation = 0
         self._thread = QThread(self)
         self._thread.run = self._work_loop  # 循环体很短，不值得单独建 worker 类
@@ -53,8 +55,11 @@ class JobExecutor(QObject):
         fn: Callable[[], Any],
         on_success: Callable[[Any], None] | None = None,
         on_error: Callable[[Exception], None] | None = None,
+        *,
+        priority: int = 10,
     ) -> None:
-        self._queue.put(_Task(fn, on_success, on_error, self._generation))
+        self._queue.put((priority, next(self._sequence),
+            _Task(fn, on_success, on_error, self._generation)))
 
     def cancel_pending(self) -> None:
         """Discard queued work and callbacks belonging to the previous account.
@@ -71,7 +76,7 @@ class JobExecutor(QObject):
 
     def shutdown(self) -> None:
         # 毒丸对象让循环自然退出，避免线程销毁时还在跑任务
-        self._queue.put(None)
+        self._queue.put((-100, next(self._sequence), None))
         if not self._thread.wait(3000):
             # 卡在长轮询（扫码等待最长两分钟）等网络调用时等不到自然
             # 退出；带着运行中的线程销毁 QThread 会让进程在解释器关闭
@@ -82,7 +87,7 @@ class JobExecutor(QObject):
 
     def _work_loop(self) -> None:
         while True:
-            task = self._queue.get()
+            _, _, task = self._queue.get()
             if task is None:
                 return
             try:

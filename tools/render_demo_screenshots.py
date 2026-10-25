@@ -77,6 +77,9 @@ def render(mode, output):
     tray_store.save([devices[i].did for i in (1, 3, 4, 7, 10, 19, 22, 24)])
     apply_theme(mode, 'blue')
     window = main_window.MainWindow()
+    # Demo-only authenticated state; jobs and service remain mocked.
+    window._logged_out = False
+    window._network_online = True
     window._default_size_applied = True
     window._clamp_to_screen = lambda: None
     window.resize(1160, 740)
@@ -197,6 +200,7 @@ def main():
         stack.enter_context(patch.object(main_window, 'MijiaService', return_value=Mock()))
         stack.enter_context(patch.object(main_window, 'JobExecutor', DemoJobs))
         stack.enter_context(patch.object(main_window, 'TrayController', DemoTray))
+        stack.enter_context(patch('app.core.availability.NetworkMonitor.check_now'))
         mode = sys.argv[sys.argv.index('--theme') + 1]
         if mode not in ('light', 'dark'):
             raise ValueError('Unknown screenshot theme')
