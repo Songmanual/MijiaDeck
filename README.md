@@ -4,6 +4,8 @@
 
 **让米家智能设备，在 Windows 上更方便地查看、管理和控制。**
 
+[项目介绍与下载](https://songmanual.github.io/MijiaDeck/) · [English website](https://songmanual.github.io/MijiaDeck/en/) · [最新版程序包](https://github.com/Songmanual/MijiaDeck/releases/latest) · [兼容性记录](docs/COMPATIBILITY.md)
+
 MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望在电脑上完成常用米家操作的用户提供桌面替代方案。工作、学习或听音乐时，不必反复拿起手机：开关设备、查看温湿度、执行场景、远程看摄像头，或者直接给小爱音箱输入文字指令，都可以在电脑上完成。
 
 **摄像头远程查看 · 托盘切换小爱音箱 · 播放与音量控制 · 小爱文字指令**
@@ -13,6 +15,30 @@ MijiaDeck 是开源免费的第三方米家 Windows 桌面客户端，为希望�
 **A free, open-source Windows desktop client for Xiaomi Mi Home (Mijia).** Control smart-home devices, view compatible cameras remotely with mouse-drag pan/tilt, choose a XiaoAI speaker from the system tray, control playback and volume, run scenes and send text commands to the selected speaker. Light/dark themes and custom accent colors make it fit your desktop. The current interface is primarily in Chinese. A macOS edition is planned, but not yet available.
 
 基于 [MiHome-Windows](https://github.com/huanyuejue/MiHome-Windows) 改进，延续 GPL-3.0-or-later 许可证并保留上游署名。MijiaDeck 与小米、米家官方没有隶属关系。
+
+## 常见问题 / FAQ
+
+### Windows 怎么控制米家设备，需要安卓模拟器吗？
+
+不需要。MijiaDeck 是开源免费的第三方米家电脑版，下载 Windows x64 免安装 ZIP，完整解压后运行 `MijiaDeck.exe`，再用米家 APP 扫码登录即可。设备操作按型号和已适配能力提供。
+
+### 电脑怎么看小米摄像头，可以在外网查看吗？
+
+对兼容型号，点击摄像头卡片或播放按钮打开独立实时预览窗口。支持远程中继，不要求电脑和摄像头在同一个局域网；摄像头需在线，网络须允许传输。可切换画质、静音、全屏，支持云台的型号可拖动画面调整角度。摄像头为实验性功能，不保证所有型号。
+
+### 电脑上能给小爱同学发文字指令、控制小爱音箱吗？
+
+可以。选择账号下在线的小爱音箱后，输入文字指令让该音箱执行。托盘也支持所选音箱的播放、暂停、切歌和音量调节。这是控制米家音箱，不是切换电脑音频输出设备。
+
+### 是小米官方米家 Windows 客户端吗？所有设备都支持吗？
+
+不是官方客户端，也不保证所有设备。MijiaDeck 聚焦 Windows 上的日常查看、控制和场景执行；高级设置、定时和自动化请继续使用米家 APP。设备型号、固件和账号权限会影响可用性；[兼容性记录](docs/COMPATIBILITY.md) 区分实机反馈、接口识别和模拟测试。
+
+### 有英文版或 macOS 版吗？
+
+网站提供[完整英文介绍](https://songmanual.github.io/MijiaDeck/en/)，程序界面目前主要为中文。macOS 版在计划中，尚无发布包。当前 Windows 包面向 Windows 10 1903+ / Windows 11 x64，不支持 Win7 / Win8。
+
+**English:** MijiaDeck is an unofficial Xiaomi Mi Home Windows desktop app, with no Android emulator required. It offers supported device controls, experimental remote camera previews and XiaoAI speaker controls/text commands from the system tray. Compatibility depends on the model, firmware and account permissions. The app UI is currently primarily Chinese; a macOS build is not available yet. See the [English website](https://songmanual.github.io/MijiaDeck/en/) and [compatibility records](docs/COMPATIBILITY.md).
 
 ## 界面预览 / Screenshots
 
