@@ -77,12 +77,26 @@ class TrayActivationTest(unittest.TestCase):
             self.app.processEvents()
             ready.assert_called_once()
             self.assertTrue(settings_store.get_tray_intro_seen())
+            settings_store.mark_version_started()
             self.assertTrue(settings_store.should_start_hidden())
             self.assertIsNone(start_with_tray_intro(window, ready))
             self.assertEqual(ready.call_count, 2)
             guide.deleteLater()
             window.close()
             window.deleteLater()
+
+    def test_upgrade_shows_main_once_without_changing_tray_start_preference(self):
+        with TemporaryDirectory() as folder, patch('app.core._json_store.data_file',
+                side_effect=lambda name: Path(folder)/name):
+            settings_store.set_start_minimized(True)
+            settings_store.set_tray_intro_seen(True)
+            # Missing version marker in an existing v1.0.2/v1.1.0 profile.
+            self.assertFalse(settings_store.should_start_hidden())
+            settings_store.mark_version_started('1.0.2')
+            self.assertFalse(settings_store.should_start_hidden())
+            settings_store.mark_version_started()
+            self.assertTrue(settings_store.should_start_hidden())
+            self.assertTrue(settings_store.get_start_minimized())
 
 
 if __name__ == '__main__':

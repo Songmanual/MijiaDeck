@@ -52,7 +52,7 @@ def check_login(report_path):
     return 0 if report['ok'] else 1
 
 
-def check_startup(entrypoint, report_path):
+def check_startup(entrypoint, report_path, *, upgrade=False):
     """Run the real main-window/event-loop path with no account or cloud jobs."""
     from contextlib import ExitStack
     from tempfile import TemporaryDirectory
@@ -77,8 +77,15 @@ def check_startup(entrypoint, report_path):
         try:
             if not window.isVisible() or window.grab().isNull():
                 raise RuntimeError('Main window was not displayed and rendered')
+            if upgrade:
+                if not settings_store.get_start_minimized():
+                    raise RuntimeError('Upgrade changed the saved startup preference')
+                if not settings_store.should_start_hidden():
+                    raise RuntimeError('Subsequent startup no longer respects the saved preference')
             report.update(ok=True, version=__version__, packaged=is_packaged(),
                           checks=['windowed-entrypoint', 'main-window-startup', 'qt-event-loop'])
+            if upgrade:
+                report['checks'].append('upgrade-first-launch-visible-with-saved-tray-start')
         except Exception as error:
             report['error'] = f'{type(error).__name__}: {error}'
         finally:
@@ -94,7 +101,10 @@ def check_startup(entrypoint, report_path):
             stack.enter_context(patch.object(main_window, 'JobExecutor', OfflineJobs))
             stack.enter_context(patch('app.core.availability.NetworkMonitor.check_now'))
             settings_store.set_check_update_enabled(False)
-            settings_store.set_start_minimized(False)
+            settings_store.set_start_minimized(upgrade)
+            if upgrade:
+                settings_store.set_tray_intro_seen(True)
+                settings_store.mark_version_started('1.0.2')
             entrypoint(ready)
     except Exception as error:
         report.update(ok=False, error=f'{type(error).__name__}: {error}')

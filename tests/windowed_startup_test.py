@@ -21,7 +21,7 @@ class Window(QWidget):
 def ready(app, window):
     app.exit(0 if window.isVisible() else 1)
 sys.argv = ['run.py', '--show-main']
-with patch.object(run, 'MainWindow', Window), patch('app.core.settings_store.should_start_hidden', return_value=True):
+with patch.object(run, 'MainWindow', Window), patch('app.core.settings_store.should_start_hidden', return_value=True), patch('app.core.settings_store.mark_version_started'):
     raise SystemExit(run.main(ready))
 '''
         result = subprocess.run([sys.executable, '-c', code], cwd=ROOT, timeout=20)

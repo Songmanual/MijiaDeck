@@ -68,6 +68,16 @@ def main():
                          ensure_ascii=False, indent=2))
         if process.returncode or not startup['ok'] or not startup['packaged']:
             raise RuntimeError('Windowed main-window startup failed')
+        upgrade_report = ROOT / 'build/upgrade-startup-check.json'
+        upgrade_report.unlink(missing_ok=True)
+        process = subprocess.run([str(folder / 'MijiaDeck/MijiaDeck.exe'),
+                                  '--check-upgrade-startup', str(upgrade_report)],
+                                 cwd=folder, env=env, timeout=30)
+        upgrade = json.loads(upgrade_report.read_text(encoding='utf-8'))
+        print(json.dumps({'upgrade_startup_exit_code': process.returncode, 'report': upgrade},
+                         ensure_ascii=False, indent=2))
+        if process.returncode or not upgrade['ok'] or not upgrade['packaged']:
+            raise RuntimeError('Upgrade startup ignored inherited tray-start preference rules')
         if preserved.read_bytes() != original_settings:
             raise RuntimeError('Existing user settings changed during package validation')
         print('Existing user settings preserved')

@@ -76,7 +76,17 @@ def set_tray_intro_seen(value: bool) -> None:
 
 
 def should_start_hidden() -> bool:
-    return get_start_minimized() and get_minimize_to_tray() and get_tray_intro_seen()
+    from app import __version__
+    return (get_start_minimized() and get_minimize_to_tray() and get_tray_intro_seen()
+            and _read_raw().get('last_started_version') == __version__)
+
+
+def mark_version_started(version=None) -> None:
+    """Remember a displayed startup without changing the user's tray preference."""
+    from app import __version__
+    raw = _read_raw()
+    raw['last_started_version'] = version or __version__
+    _write_raw(raw)
 
 
 def set_start_minimized(value: bool) -> None:

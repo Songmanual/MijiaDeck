@@ -163,13 +163,14 @@ def main(startup_check=None) -> int:
     except Exception:
         pass
 
-    from app.core.settings_store import should_start_hidden
+    from app.core.settings_store import should_start_hidden, mark_version_started
     # 以托盘方式静默启动：完全不显示主窗口（设备列表在后台加载，
     # 卡片网格延迟到首次唤出才构建，常驻内存显著更低）。曾用
     # 「透明 show 再隐藏」初始化原生窗口，但那会连带构建整页卡片
     _start_hidden = should_start_hidden() and '--show-main' not in sys.argv
     if not _start_hidden:
         window.show()
+        mark_version_started()
     # 登录检查放在 show 之后发起：回调经队列信号回到主线程，
     # 先启动事件循环可保证首次回调不被阻塞在窗口绘制之前
     def begin():
@@ -195,6 +196,9 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == '--check-startup':
         from app.package_check import check_startup
         raise SystemExit(check_startup(main, sys.argv[2]))
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-upgrade-startup':
+        from app.package_check import check_startup
+        raise SystemExit(check_startup(main, sys.argv[2], upgrade=True))
     if len(sys.argv) == 3 and sys.argv[1] == '--check-package':
         from app.package_check import check_package
         raise SystemExit(check_package(sys.argv[2]))
