@@ -85,6 +85,34 @@ _GRID_SPACING = 8
 # Windows 原生窗口消息与命中测试代码
 _WM_NCHITTEST = 0x0084
 _WM_NCLBUTTONDBLCLK = 0x00A3
+
+# 让无边框窗口重新获得 DWM 投影：DWM 只给带 WS_THICKFRAME / WS_CAPTION
+# 的顶层窗口画阴影，而 Qt 的 FramelessWindowHint 会把这些样式位剥成
+# 纯 WS_POPUP。这里把样式位加回去，再用 DwmExtendFrameIntoClientArea
+# 提交一次 1px 边框延伸触发投影。Qt 平台插件已负责把客户区铺满整个
+# 窗口（WM_NCCALCSIZE 返回 0），因此不会出现系统标题栏或黑边。
+_GWL_STYLE = -16
+_WS_CAPTION = 0x00C00000
+_WS_THICKFRAME = 0x00040000
+_WS_SYSMENU = 0x00080000
+_WS_POPUP = 0x80000000
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_NOZORDER = 0x0004
+_SWP_NOACTIVATE = 0x0010
+_SWP_FRAMECHANGED = 0x0020
+
+
+class _DwmMargins(ctypes.Structure):
+    """DwmExtendFrameIntoClientArea 的 MARGINS 结构。"""
+    _fields_ = [
+        ("cxLeftWidth", ctypes.c_int),
+        ("cxRightWidth", ctypes.c_int),
+        ("cyTopHeight", ctypes.c_int),
+        ("cyBottomHeight", ctypes.c_int),
+    ]
+
+
 _HTCLIENT = 1
 _HTCAPTION = 2
 _HTLEFT = 10
@@ -623,6 +651,39 @@ class MainWindow(QMainWindow):
     # ---------- 原生窗口行为（Windows 消息拦截） ----------
     #
     # Qt 管理无边框客户区；WM_NCHITTEST 负责拖动与边缘缩放命中。
+
+    def _enable_dwm_shadow(self) -> None:
+        """给无边框窗口补回 DWM 投影（Windows 10/11）。
+
+        DWM 依据窗口样式位决定是否画阴影，FramelessWindowHint 会把
+        WS_CAPTION / WS_THICKFRAME / WS_SYSMENU 一并移除，窗口因此变成
+        无阴影的 WS_POPUP。把样式位加回并触发一次 FRAMECHANGED 即可恢复
+        投影；客户区仍由 Qt 铺满，不会出现系统标题栏。
+
+        刻意不补 WS_MINIMIZEBOX / WS_MAXIMIZEBOX：系统会把这两个位算进
+        边框尺寸，最大化时窗口会比工作区各多出 8px（实测 1936×1048 对
+        1920×1032），四边溢出屏幕。缺少这两个位不影响本程序的最小化、
+        最大化和 Alt+Space 系统菜单，它们由 Qt 与 WM_NCHITTEST 处理。
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            hwnd = int(self.winId())
+            user32 = ctypes.windll.user32
+            style = user32.GetWindowLongW(hwnd, _GWL_STYLE) & 0xFFFFFFFF
+            if style & _WS_THICKFRAME:
+                return  # 已经有边框位（例如非无边框模式），无需处理
+            style = (style | _WS_CAPTION | _WS_THICKFRAME | _WS_SYSMENU) & ~_WS_POPUP
+            user32.SetWindowLongW(hwnd, _GWL_STYLE, style)
+
+            margins = _DwmMargins(1, 1, 1, 1)
+            ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(
+                wintypes.HWND(hwnd), ctypes.byref(margins))
+            user32.SetWindowPos(
+                wintypes.HWND(hwnd), None, 0, 0, 0, 0,
+                _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_NOACTIVATE | _SWP_FRAMECHANGED)
+        except Exception:  # pragma: no cover - 非 Windows 或 DWM 不可用时静默降级
+            logger.debug("DWM 阴影启用失败，窗口按原样显示", exc_info=True)
 
     def nativeEvent(self, eventType, message):  # noqa: N802 (Qt 命名约定)
         if sys.platform == "win32" and eventType == "windows_generic_MSG":
@@ -1701,6 +1762,8 @@ class MainWindow(QMainWindow):
     def showEvent(self, event) -> None:  # noqa: N802 (Qt 命名约定)
         super().showEvent(event)
         self._network_monitor.check_now()
+        # 窗口句柄在首次 show 后才稳定，此时补 DWM 投影最稳妥
+        self._enable_dwm_shadow()
         # 统一使用逻辑尺寸：200% 系统缩放时对应 2320×1480 物理像素。
         # 首次显示居中；后续托盘唤出保留用户调整的位置和大小。
         if not self._default_size_applied:
